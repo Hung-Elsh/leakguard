@@ -105,7 +105,7 @@ def scorecard(store: Store) -> dict:
         "mail_blocked_total": sum(store.mail_stats().values()),
         "mail_blocked_7d": sum(store.mail_stats(week_ago).values()),
         "trend": [{"ts": s["ts"][:16].replace("T", " "), "open": s.get("open"), "gone": s.get("gone")}
-                  for s in store.snapshots() if s.get("kind") == "monitor"],
+                  for s in store.snapshots() if s.get("kind") == "monitor" and not s.get("invalid")],
     }
 
 
