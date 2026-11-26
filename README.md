@@ -65,7 +65,7 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | Discovery | `scan [--stage keyword\|identities] [-s SOURCE]` | Search the keyword, propose candidates, deep-scan claimed identities |
 | | `findings [--status] [--verdict]` | List findings with IDs |
 | | `mark ID... --as open\|protect\|accepted\|false_positive` | Your verdict: clean up, keep and secure, no action, not yours |
-| | `report` | Markdown + JSON report, with the before/after scorecard |
+| | `report [--final [--share]]` | Markdown + JSON report with the scorecard; `--final`: readable cleanup report; `--share`: identities masked |
 | | `monitor [--quick] [--mail] [--schedule weekly]` | Scan, re-check due removals, report what changed, alert; `--schedule` writes a systemd timer |
 | | `password-check` | Is a password in known breaches? (only a 5-character hash prefix leaves your machine) |
 | Removal | `remove status [ID]` | Refresh the plan from your findings; list actions or show one |

@@ -194,6 +194,14 @@ state → snapshot → report in `~/.local/share/leakguard/reports/<profile>-mon
 - **Manual use is fine:** run `leakguard monitor -p internet` whenever you like (for example weekly, and after the
   follow-up dates shown by `leakguard remove status --due`). The timer below is optional.
 
+**Final cleanup report:**
+```bash
+leakguard report --final -p internet            # readable report: found, done (with dates), waiting, scorecard
+leakguard report --final --share -p internet    # the same with every identity masked, to share with others
+```
+`--share` masks your keyword, emails, usernames, name and Google IDs everywhere (also inside URLs), and refuses to
+write the file if any private term is left. Both go to `~/.local/share/leakguard/reports/` (mode 600).
+
 **Optional: run it automatically (systemd user timer).** `monitor --schedule daily|weekly|monthly` only writes two
 files to `~/.local/share/leakguard/systemd/` (add `--quick` / `--mail` to bake those options in). Enable them:
 ```bash
