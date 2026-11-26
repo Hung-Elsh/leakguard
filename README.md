@@ -32,6 +32,8 @@ keyword ─► discover (OSINT) ─► evaluate ─► your verdict ─► remov
    `--confirm`.
 5. **Verify.** `remove check` re-runs the sources that found each item; it counts as removed only when they no
    longer see it. Every run and every step is logged for the dashboard.
+6. **Monitor.** `monitor` (weekly via a systemd timer) repeats discovery, re-checks due removals, reopens any
+   removal whose data came back, alerts on new exposures and keeps a scorecard and trend.
 
 ## Your data stays out of the repository
 | What | Where |
@@ -63,7 +65,8 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | Discovery | `scan [--stage keyword\|identities] [-s SOURCE]` | Search the keyword, propose candidates, deep-scan claimed identities |
 | | `findings [--status] [--verdict]` | List findings with IDs |
 | | `mark ID... --as open\|protect\|accepted\|false_positive` | Your verdict: clean up, keep and secure, no action, not yours |
-| | `report` | Markdown + JSON report |
+| | `report` | Markdown + JSON report, with the before/after scorecard |
+| | `monitor [--quick] [--mail] [--schedule weekly]` | Scan, re-check due removals, report what changed, alert; `--schedule` writes a systemd timer |
 | | `password-check` | Is a password in known breaches? (only a 5-character hash prefix leaves your machine) |
 | Removal | `remove status [ID]` | Refresh the plan from your findings; list actions or show one |
 | | `remove do ID [--confirm]` | Perform it: email (draft / send), form (fill / submit), manual (steps) |
@@ -82,5 +85,5 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 1 | Discovery | done: 19 sources, run on real data |
 | 2 | Mail blocking | done: real-mail copy matches Gmail spam 9/9, 0 false positives |
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
-| 4 | Monitor + scorecard | next |
+| 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |

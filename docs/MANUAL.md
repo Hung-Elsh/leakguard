@@ -10,9 +10,10 @@ identity, no internet) or `-p internet` (your real data). Examples use `-p inter
 4. [Verdicts](#4-verdicts)
 5. [Removal](#5-removal)
 6. [Mail blocking](#6-mail-blocking)
-7. [The lab](#7-the-lab)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Data and privacy](#9-data-and-privacy)
+7. [Monitoring and scorecard](#7-monitoring-and-scorecard)
+8. [The lab](#8-the-lab)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Data and privacy](#10-data-and-privacy)
 
 ---
 
@@ -168,11 +169,52 @@ leakguard block --apply --filters -p internet       # also sync your blocklist t
   leakguard block -p lab --owner-copy --since 0 --limit 2000   # compared with Gmail's own Spam label
   ```
 
-## 7. The lab
+## 7. Monitoring and scorecard
+```bash
+leakguard monitor -p internet                       # full check-up now
+leakguard monitor --quick -p internet               # skip the slow tools (Maigret, SpiderFoot, Sherlock, Blackbird)
+leakguard monitor --mail -p internet                # also email the alert to your own address
+leakguard monitor --schedule weekly -p internet     # write a systemd timer; prints the commands to enable it
+```
+One run: full scan (keyword, then claimed identities) → re-check every removal whose follow-up is due → reopen any
+removal whose data came back (the scorecard never keeps a removal that was undone) → diff against the previous
+state → snapshot → report in `~/.local/share/leakguard/reports/<profile>-monitor-*.md` → alert.
+
+- **What is reported:** new exposures (grouped: one line per page/record, with the sources and identities that
+  saw it), items no longer seen, new candidates, removal changes, removals that came back, sources that failed
+  (e.g. an expired GHunt login).
+- **Alerts:** a desktop notification when there is something new from `--min-severity` (default medium) up, new
+  candidates, verified or undone removals, or source errors. `--mail` also mails the report to your address.
+- **Scorecard** (in every monitor report and in `leakguard report`): exposures found since the first scan, still
+  open, no longer seen and how many of those were verified by a removal action, accounts deleted / in progress,
+  protected accounts, removal actions by state, mail blocked in the last 7 days, and the trend over monitor runs.
+- **Honest numbers:** breach records are permanent, so a run that does not return one (a flaky lookup service) never
+  marks it gone; every run re-rates stored search results with the current rules, so an old rating cannot count as
+  a removal; a removal whose data comes back is reopened.
+- **Manual use is fine:** run `leakguard monitor -p internet` whenever you like (for example weekly, and after the
+  follow-up dates shown by `leakguard remove status --due`). The timer below is optional.
+
+**Optional: run it automatically (systemd user timer).** `monitor --schedule daily|weekly|monthly` only writes two
+files to `~/.local/share/leakguard/systemd/` (add `--quick` / `--mail` to bake those options in). Enable them:
+```bash
+mkdir -p ~/.config/systemd/user && cp ~/.local/share/leakguard/systemd/leakguard-monitor.* ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now leakguard-monitor.timer
+systemctl --user list-timers leakguard-monitor.timer         # when it runs next
+journalctl --user -u leakguard-monitor.service -n 50          # output of the last runs
+sudo loginctl enable-linger $USER                             # optional: also run while logged out
+```
+It runs at 09:00 (weekly: Mondays) with up to 30 minutes of random delay, and catches up after the machine was off.
+Without linger it only runs while you are logged in. To turn it off again:
+```bash
+systemctl --user disable --now leakguard-monitor.timer
+rm ~/.config/systemd/user/leakguard-monitor.{service,timer} && systemctl --user daemon-reload
+```
+
+## 8. The lab
 No internet: fake OSINT services on 127.0.0.1:5055, GreenMail/Mailpit on 192.168.1.250, recorded tool output for
 the tools that only talk to real sites, and a fictional identity (`zorblat`). See [lab/README.md](../lab/README.md).
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 | Symptom | Cause / fix |
 |---|---|
 | GHunt crashes (`KeyError: 'container'`, JSON errors, `NameError: photos`) | Google changed its replies: `python3 scripts/patch_ghunt.py` |
@@ -184,7 +226,7 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
 | A site resolves to 127.0.0.1/::1 | A hosts-file or DNS blocklist on this machine |
 | `leakcheck` fails before a commit | A file contains your private identity: remove it or git-ignore the file |
 
-## 9. Data and privacy
+## 10. Data and privacy
 - Your identity, Gmail token and mail lists live in `~/.config/leakguard/`; scans, reports, drafts, screenshots
   and raw tool output in `~/.local/share/leakguard/` (private permissions). None of it is in the repository.
 - Leaked passwords are masked everywhere (findings, reports, drafts). API keys are masked in logs.
