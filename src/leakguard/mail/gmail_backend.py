@@ -43,11 +43,18 @@ class GmailBackend(MailBackend):
         from google_auth_oauthlib.flow import InstalledAppFlow
         from googleapiclient.discovery import build
 
-        creds = Credentials.from_authorized_user_file(str(TOKEN), SCOPES) if TOKEN.exists() else None
+        from google.auth.exceptions import RefreshError
+
+        # Load with the scopes actually granted (stored in the token), not the ones we want: passing SCOPES here
+        # would make an expired token ask Google for a scope never granted (invalid_scope).
+        creds = Credentials.from_authorized_user_file(str(TOKEN)) if TOKEN.exists() else None
         if creds and not creds.has_scopes(SCOPES):
             creds = None                       # a scope was added since consent: ask again
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                creds = None                   # revoked / expired consent (Testing apps: ~7 days): ask again
         if not creds or not creds.valid:
             secret = Path(os.path.expanduser(os.environ.get("GMAIL_CLIENT_SECRET_FILE",
                                                             str(USER_CONFIG / "client_secret.json"))))
