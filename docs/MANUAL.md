@@ -110,7 +110,8 @@ leakguard remove check -p internet                  # re-scan everything waiting
 **How the plan is built** (`remove status` refreshes it every time):
 - One action per target: the same account found by several tools is one action with all the evidence.
 - Breached site: delete your account there (GDPR-style request where an address is known).
-- Credential compilations: one "change those passwords" action. Leak indexes (IntelX): one removal request.
+- Credential compilations: one "change those passwords" action. Leak indexes (IntelX): one removal request
+  per address, including records of accounts you `protect` (you keep the account, not the leaked copy).
   Pastes: one report per paste site. Brokers: opt-out. Every breached address: HIBP opt-out.
 - Contacts come from a hand-checked catalog, then the JustDeleteMe dataset (downloaded automatically, refreshed
   every 30 days). Anything else is **unverified** and will not be sent until you set a contact you checked.
@@ -119,9 +120,17 @@ leakguard remove check -p internet                  # re-scan everything waiting
 
 | Method | `remove do ID` | `remove do ID --confirm` |
 |---|---|---|
-| email | Writes and shows the request (from your address) | Sends it (lab: Mailpit; internet: your Gmail). Refused without a verified address |
+| email | Writes and shows the request, from the address the data is about | Sends it (lab: Mailpit; internet: your Gmail). Refused without a verified address, or when Gmail is signed in to another address |
 | form | Fills the opt-out form in a headless browser, saves a screenshot | Submits it, screenshots the result |
 | manual / checklist | Shows the steps and link | (nothing to send: you do it, then `remove set ID done`) |
+
+**Which address a request comes from.** Sites act only for the address a request is sent from: Intelligence X
+removed nothing for an address that was listed in a request sent from a different one. So an action about one
+email address is sent from that address, and `--confirm` refuses to send if Gmail is signed in to another
+account (it would silently change the sender). To send from another of your addresses, delete
+`~/.config/leakguard/gmail_token.json` and sign in again as that address, or send the draft yourself from it.
+An address you can no longer sign in to cannot send its own request; recover it first (`remove status ID`
+shows the recovery hint).
 
 **Recording progress with `set`:**
 ```bash
