@@ -33,6 +33,23 @@ CREATE TABLE IF NOT EXISTS findings (
   status TEXT,                   -- new | known | gone
   first_seen TEXT, last_seen TEXT, last_scan INTEGER
 );
+CREATE TABLE IF NOT EXISTS actions (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,      -- grouping key, e.g. account:twitch, leakindex:intelx, broker:lab-broker
+  kind TEXT NOT NULL,            -- account_delete | data_erasure | leak_removal | broker_optout | paste_report
+                                 -- | protect_checklist | rotate_password | hibp_optout | manual
+  method TEXT NOT NULL,          -- email | form | manual | checklist
+  target TEXT, title TEXT,
+  contact TEXT,                  -- email address or URL
+  contact_verified INTEGER,      -- 1 = from a vetted catalog entry, 0 = guessed / needs checking
+  template TEXT,
+  state TEXT NOT NULL,           -- see ACTION_STATES
+  finding_ids TEXT,              -- JSON list
+  identities TEXT,               -- JSON list of identity values involved
+  draft_path TEXT, steps TEXT, notes TEXT,
+  history TEXT,                  -- JSON list of {ts, state, note}
+  created TEXT, updated TEXT, next_check TEXT
+);
 CREATE TABLE IF NOT EXISTS mail_log (
   ts TEXT, profile TEXT, message_id TEXT, sender TEXT, subject TEXT,
   rule TEXT, action TEXT, applied INTEGER
@@ -61,6 +78,21 @@ FINDING_COLUMNS = {"disposition": "TEXT DEFAULT 'open'", "note": "TEXT"}
 # accepted       known, not a threat, no action
 # false_positive not the owner / the source was wrong
 DISPOSITIONS = ("open", "protect", "accepted", "false_positive")
+
+
+# Removal action life cycle. "done" closes manual steps and checklists; "verified" needs a re-check
+# showing the linked findings gone.
+ACTION_STATES = ("planned", "drafted", "requested", "acknowledged", "removed", "verified", "done", "skipped")
+ACTION_FLOW = {
+    "planned": {"drafted", "requested", "done", "skipped"},
+    "drafted": {"drafted", "requested", "skipped", "planned"},
+    "requested": {"acknowledged", "removed", "verified", "requested", "skipped"},
+    "acknowledged": {"removed", "verified", "requested", "skipped"},
+    "removed": {"verified", "requested"},
+    "verified": {"requested"},                 # a finding came back
+    "done": {"planned", "verified"},
+    "skipped": {"planned"},
+}
 
 
 def now() -> str:
@@ -208,6 +240,74 @@ class Store:
         return list(self.db.execute(
             "SELECT r.*, i.value AS identity FROM source_runs r JOIN identities i ON i.id=r.identity_id WHERE scan_id=?",
             (scan_id,)))
+
+    # ---- removal actions ---------------------------------------------------------------
+    def upsert_action(self, a: dict) -> tuple[int, bool]:
+        """Insert a planned action or merge new findings into an existing one (same key).
+        Never resets the state of an action already in progress. Returns (id, created)."""
+        row = self.db.execute("SELECT * FROM actions WHERE key=?", (a["key"],)).fetchone()
+        ts = now()
+        if row is None:
+            cur = self.db.execute(
+                "INSERT INTO actions(key, kind, method, target, title, contact, contact_verified, template, state, "
+                "finding_ids, identities, steps, notes, history, created, updated) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (a["key"], a["kind"], a["method"], a.get("target"), a.get("title"), a.get("contact"),
+                 int(bool(a.get("contact_verified"))), a.get("template"), "planned",
+                 json.dumps(sorted(a["finding_ids"])), json.dumps(sorted(a.get("identities", []))),
+                 a.get("steps", ""), a.get("notes", ""), json.dumps([{"ts": ts, "state": "planned", "note": "plan"}]),
+                 ts, ts))
+            self.db.commit()
+            return cur.lastrowid, True
+        fids = sorted(set(json.loads(row["finding_ids"] or "[]")) | set(a["finding_ids"]))
+        idents = sorted(set(json.loads(row["identities"] or "[]")) | set(a.get("identities", [])))
+        self.db.execute("UPDATE actions SET finding_ids=?, identities=?, updated=? WHERE id=?",
+                        (json.dumps(fids), json.dumps(idents), ts, row["id"]))
+        owner_contact = any("contact set by owner" in h.get("note", "") for h in json.loads(row["history"] or "[]"))
+        if row["state"] == "planned" and not owner_contact:
+            # not started: take the catalog's current answer (links get fixed; never overrides an owner's contact)
+            self.db.execute("UPDATE actions SET method=?, target=?, title=?, contact=?, contact_verified=?, template=?, "
+                            "steps=? WHERE id=?",
+                            (a["method"], a.get("target"), a.get("title"), a.get("contact"),
+                             int(bool(a.get("contact_verified"))), a.get("template"), a.get("steps", ""), row["id"]))
+        self.db.commit()
+        return row["id"], False
+
+    def actions(self, state: str | None = None) -> list[sqlite3.Row]:
+        q, args = "SELECT * FROM actions", ()
+        if state:
+            q, args = q + " WHERE state=?", (state,)
+        return list(self.db.execute(q + " ORDER BY id", args))
+
+    def action(self, action_id: int) -> sqlite3.Row:
+        row = self.db.execute("SELECT * FROM actions WHERE id=?", (action_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"no action {action_id}")
+        return row
+
+    def set_action_state(self, action_id: int, state: str, note: str = "", **fields) -> sqlite3.Row:
+        """Move an action along ACTION_FLOW (refuses illegal jumps) and append to its history."""
+        row = self.action(action_id)
+        if state not in ACTION_STATES:
+            raise ValueError(f"unknown state {state!r}")
+        if state != row["state"] and state not in ACTION_FLOW[row["state"]]:
+            raise ValueError(f"action {action_id}: cannot go from {row['state']} to {state}")
+        allowed = {"draft_path", "contact", "next_check", "notes"}
+        if set(fields) - allowed:
+            raise ValueError(f"unknown fields {set(fields) - allowed}")
+        hist = json.loads(row["history"] or "[]") + [{"ts": now(), "state": state, "note": note}]
+        sets = ", ".join(["state=?", "history=?", "updated=?", *[f"{k}=?" for k in fields]])
+        self.db.execute(f"UPDATE actions SET {sets} WHERE id=?",
+                        (state, json.dumps(hist), now(), *fields.values(), action_id))
+        self.db.commit()
+        return self.action(action_id)
+
+    def findings_by_ids(self, ids: list[str]) -> list[sqlite3.Row]:
+        if not ids:
+            return []
+        q = ("SELECT f.*, i.value AS identity, i.kind AS identity_kind FROM findings f "
+             f"JOIN identities i ON i.id=f.identity_id WHERE f.id IN ({','.join('?' * len(ids))})")
+        return list(self.db.execute(q, ids))
 
     def log_mail(self, profile: str, rows: list[tuple[str, str, str, str, str]], applied: bool) -> None:
         """Record classified messages (only non-keep verdicts) for the scorecard."""
