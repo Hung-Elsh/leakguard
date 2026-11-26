@@ -129,3 +129,131 @@ def test_leak_terms_and_masked_output(private_identity):
     assert {"quillfox", "quillfox9@example.org", "qfox_9"} <= terms
     msg = leaks.describe(leaks.Hit("README.md", 3, "quillfox9@example.org"))
     assert "quillfox9@example.org" not in msg
+
+
+# ---- mail hosts ---------------------------------------------------------------------
+def test_lab_mail_host_must_be_in_scope(lab):
+    ScopeGuard(lab).check_host("192.168.1.250", "mail")
+    with pytest.raises(ScopeError):
+        ScopeGuard(lab).check_host("imap.gmail.com", "mail")
+
+
+def test_internet_mail_hosts(internet):
+    ScopeGuard(internet).check_host("gmail.googleapis.com", "mail")
+    with pytest.raises(ScopeError):
+        ScopeGuard(internet).check_host("imap.evil.test", "mail")
+
+
+# ---- secrets never reach output/storage ------------------------------------------------
+def test_redact_url_params_and_known_values():
+    from leakguard.models import redact
+    msg = "403 for url 'https://x.test/v1?key=AIzaSECRETVALUE123&cx=abc&q=a' token=ghp_abcdef123 used SECRETVALUE2"
+    out = redact(msg, ["SECRETVALUE2"])
+    assert "AIzaSECRETVALUE123" not in out and "ghp_abcdef123" not in out and "SECRETVALUE2" not in out
+    assert "cx=abc" in out          # non-secret parameters stay readable
+
+
+def test_http_error_is_logged_in_full_but_without_key(lab):
+    import httpx
+
+    from leakguard.engine import _run_one
+    from leakguard.models import PluginResult
+    from leakguard.plugins import Context, Plugin
+    from leakguard.net import Http
+
+    class Failing(Plugin):
+        name, kinds = "fake", ("email",)
+
+        def run(self, ctx, ident):
+            req = httpx.Request("GET", "https://api.test/v1?key=SUPERSECRET123&q=x")
+            resp = httpx.Response(403, request=req, json={"error": {"message": "This project does not have the access"}})
+            resp.raise_for_status()
+            return PluginResult()
+
+    guard = ScopeGuard(lab)
+    out = _run_one(Context(lab, guard, Http(lab, guard)), Failing(), Identity(1, "a@seclab.test", "email", "claimed"),
+                   ["SUPERSECRET123"])
+    assert out.status == "error" and out.log["http_status"] == 403
+    assert "does not have the access" in out.error and "does not have the access" in out.log["detail"]
+    assert "SUPERSECRET123" not in out.log["url"] and "key=***" in out.log["url"]
+    assert out.log["error_type"] == "HTTPStatusError" and out.log["duration_ms"] >= 0
+
+
+# ---- match level: only the owner's email on a page is a real exposure ---------------------
+def test_match_level(lab):
+    from leakguard.net import Http
+    from leakguard.plugins import Context
+    guard = ScopeGuard(lab)
+    ctx = Context(lab, guard, Http(lab, guard), {"zorblat11@seclab.test", "zorblat_x"})
+    assert ctx.match_level("contact zorblat11@seclab.test") == "email"
+    assert ctx.match_level("profile of zorblat_x on a forum") == "exact"
+    assert ctx.match_level("the zorblat project") == "exact"          # the keyword itself as a word
+    assert ctx.match_level("zorblatfan2000 posted") == "variant"
+    assert ctx.match_level("blat zor sniper") == "none"
+
+
+# ---- tool failures are never reported as "nothing found" -----------------------------------
+def test_tool_failure_without_output_raises(tmp_path):
+    import subprocess
+
+    from leakguard.runner import ToolError, expect_output
+    crashed = subprocess.CompletedProcess(["ghunt"], 1, stdout="[+] Authenticated !", stderr="Traceback\nNameError: name 'photos'")
+    with pytest.raises(ToolError) as e:
+        expect_output("ghunt", crashed, tmp_path / "missing.json")
+    assert "NameError" in str(e.value) and "exit code 1" in e.value.detail
+    clean = subprocess.CompletedProcess(["ghunt"], 0, stdout="not found", stderr="")
+    assert expect_output("ghunt", clean, tmp_path / "missing.json") is None   # ran fine, nothing to report
+
+
+def test_rate_limited_sites_count_as_failures(lab):
+    from leakguard.net import Http
+    from leakguard.plugins import BY_NAME, Context
+    from leakguard.paths import ROOT
+    guard = ScopeGuard(lab)
+    ctx = Context(lab, guard, Http(lab, guard), set())
+    text = (ROOT / "lab/fixtures/holehe/zorblat11@seclab.test.csv").read_text()
+    r = BY_NAME["holehe"].parse(ctx, text, "zorblat11@seclab.test", "email")
+    assert r.failures == {"rate limited": 1} and len(r.findings) == 3 and r.checked == 5
+
+
+@pytest.mark.parametrize("name,fields,expected", [
+    ("cit0day.in", (), "high"), ("Collection #1", (), "high"), ("gmail (2).rar/gmail.txt", (), "high"),
+    ("combo_2023.txt", (), "high"), ("AndroidLista", ("username", "id", "first_name"), "medium"),
+    ("LabShop", ("email", "password"), "high"), ("dragonnest.com", (), "medium"), ("hiGH !.txt", (), "medium"),
+])
+def test_breach_severity(name, fields, expected):
+    from leakguard.models import breach_severity
+    assert breach_severity(name, fields) == expected
+
+
+# ---- finding lifecycle: new -> known -> gone; partial runs never mark gone; verdicts survive ----------
+def test_finding_lifecycle(tmp_path):
+    from leakguard.models import Finding
+    store = Store(tmp_path / "t.sqlite")
+    store.seed("a@seclab.test", "email", "test")
+    ident = store.identities("claimed")[0]
+    f1, f2 = Finding("src", "account", "Account on A", locator="a"), Finding("src", "account", "Account on B", locator="b")
+    s1 = store.start_scan("scan")
+    assert store.save_findings(s1, ident, "src", [f1, f2]) == (2, 0)
+    rows = {r["title"]: r for r in store.findings()}
+    assert rows["Account on A"]["status"] == "new" and rows["Account on A"]["disposition"] == "open"
+    store.mark([rows["Account on B"]["id"][:8]], "false_positive", "control")
+    s2 = store.start_scan("scan")
+    assert store.save_findings(s2, ident, "src", [f1], mark_gone=False) == (0, 0)   # partial: B kept
+    assert store.save_findings(s2, ident, "src", [f1]) == (0, 1)                    # complete: B gone
+    rows = {r["title"]: r for r in store.findings()}
+    assert rows["Account on A"]["status"] == "known"
+    assert rows["Account on B"]["status"] == "gone" and rows["Account on B"]["disposition"] == "false_positive"
+
+
+def test_protect_verdict(tmp_path):
+    from leakguard.models import Finding
+    store = Store(tmp_path / "t.sqlite")
+    store.seed("a@seclab.test", "email", "test")
+    ident = store.identities("claimed")[0]
+    store.save_findings(store.start_scan("scan"), ident, "src", [Finding("src", "breach", "Game forum", locator="g")])
+    fid = store.findings()[0]["id"]
+    store.mark([fid[:8]], "protect", "main account")
+    assert store.findings()[0]["disposition"] == "protect"
+    with pytest.raises(ValueError):
+        store.mark([fid[:8]], "delete-it")
