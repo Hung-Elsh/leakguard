@@ -103,11 +103,14 @@ def to_markdown(rep: dict) -> str:
 
 
 def write(settings: Settings, store: Store) -> tuple[Path, Path]:
+    from .monitor import scorecard
     rep = build(settings, store)
+    rep["scorecard"] = scorecard(store)
     REPORTS.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     md = REPORTS / f"{settings.profile}-{stamp}.md"
     js = REPORTS / f"{settings.profile}-{stamp}.json"
-    md.write_text(to_markdown(rep))
+    from .monitor import scorecard_markdown
+    md.write_text(to_markdown(rep) + "\n" + "\n".join(scorecard_markdown(rep["scorecard"])) + "\n")
     js.write_text(json.dumps(rep, indent=2, default=str))
     return md, js

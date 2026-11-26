@@ -345,6 +345,44 @@ def lab_import(
     console.print(f"Next: [cyan]leakguard block -p lab --owner-copy --since 0 --limit {max(r.imported, 1)}[/] (dry run)")
 
 
+@app.command()
+def monitor(profile: Optional[str] = ProfileOpt, source: Optional[list[str]] = SourceOpt,
+            quick: bool = typer.Option(False, help="Skip the slow tools (Maigret, SpiderFoot, Sherlock, Blackbird)."),
+            mail: bool = typer.Option(False, "--mail", help="Also email the alert to your own address."),
+            desktop: bool = typer.Option(True, help="Desktop notification when something new appears."),
+            min_severity: str = typer.Option("medium", help="Alert on new exposures from this severity up."),
+            schedule: Optional[str] = typer.Option(None, help="daily | weekly | monthly: write systemd timer files "
+                                                               "and print how to enable them (does not run a scan).")) -> None:
+    """Full check-up: scan, re-check due removals, report what changed, alert, keep a snapshot for trends."""
+    from . import monitor as mon
+    if schedule:
+        prof = profile or "internet"
+        extra = " ".join(["--quick"] if quick else []) + (" --mail" if mail else "")
+        try:
+            out = mon.write_schedule(prof, schedule, extra.strip())
+        except ValueError as e:
+            console.print(f"[red]{e}[/]")
+            raise typer.Exit(2)
+        console.print(f"[green]timer files written[/] to {out}\nEnable them (run these yourself):\n")
+        console.print(f"  mkdir -p ~/.config/systemd/user && cp {out}/leakguard-monitor.* ~/.config/systemd/user/\n"
+                      "  systemctl --user daemon-reload && systemctl --user enable --now leakguard-monitor.timer\n"
+                      "  systemctl --user list-timers leakguard-monitor.timer      # next run\n"
+                      "  sudo loginctl enable-linger $USER   # optional: also run while you are logged out", soft_wrap=True)
+        return
+    s, store = _open(profile)
+    res = mon.run(s, store, source, quick)
+    mon.alert(s, res, desktop, mail, min_severity)
+    counted_new = [g for g in res.grouped_new() if g["severity"] != "info"]
+    console.print(f"new: [bold]{len(counted_new)}[/] · gone: [bold]{sum(f['severity'] != 'info' for f in res.gone)}[/]"
+                  f" · new candidates: {len(res.candidates)}"
+                  f" · action changes: {len(res.action_changes)} · source errors: {len(res.problems)}")
+    for line in res.reopened:
+        console.print(f"  [red]came back:[/] {line}")
+    for line in res.checks:
+        console.print(f"  {line}")
+    console.print(f"report: [cyan]{res.report}[/]" + (f" · alerted: {', '.join(res.alerted)}" if res.alerted else ""))
+
+
 @app.command("report")
 def report_cmd(profile: Optional[str] = ProfileOpt) -> None:
     """Write a Markdown + JSON report to reports/."""
