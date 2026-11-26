@@ -10,6 +10,29 @@ Personal exposure cleanup. You give it a keyword you made up (one that only you 
 It only acts on identities you have claimed, and nothing leaves your machine (no email, no form) without `--confirm`.
 The full guide is **[docs/MANUAL.md](docs/MANUAL.md)**; the lab walkthrough is [lab/README.md](lab/README.md).
 
+## How it works
+```
+keyword ─► discover (OSINT) ─► evaluate ─► your verdict ─► remove ─► verify by re-scan
+                                                          └─► protect (checklist) · block (mail)
+```
+1. **Discover.** The keyword is searched (Brave, GitHub, IntelX) and every email or username containing it
+   becomes a *candidate*; only those you `claim` are scanned further. Claimed identities go through 19 OSINT
+   Framework sources: breach and leak indexes (HIBP, IntelX, LeakCheck, SpiderFoot/Leak-Lookup, h8mail,
+   Mosint), account checkers (holehe, socialscan, Sherlock, Maigret, Blackbird), the Google account (GHunt),
+   profiles and keys (Gravatar, PGP keyservers) and code (GitHub).
+2. **Evaluate.** Findings from all tools are merged and rated by their evidence: high when a password, hash or
+   credential compilation is involved or your email is on a public page, medium for breaches with unknown
+   contents, low for accounts and exact name matches, info for look-alikes. Username hits are re-checked with a
+   random control name to drop sites that "find" anyone; rate-limited checks are marked partial, never "clean".
+3. **Your verdict** decides the plan: `open` (clean up), `protect` (your own account: keep and secure),
+   `accepted`, `false_positive`.
+4. **Remove.** One action per site. The JustDeleteMe dataset (about 2,700 sites, refreshed monthly) and a
+   hand-checked catalog give each account's delete page or privacy contact. LeakGuard drafts the GDPR-style
+   request, fills opt-out forms in a headless browser, or lists the steps; it sends or submits only with
+   `--confirm`.
+5. **Verify.** `remove check` re-runs the sources that found each item; it counts as removed only when they no
+   longer see it. Every run and every step is logged for the dashboard.
+
 ## Your data stays out of the repository
 | What | Where |
 |---|---|
