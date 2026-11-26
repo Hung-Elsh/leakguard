@@ -131,23 +131,25 @@ def _print_summary(summary: engine.RunSummary) -> None:
     if summary.new_candidates:
         console.print(f"[bold yellow]{len(summary.new_candidates)} new candidate(s):[/] "
                       + ", ".join(summary.new_candidates))
-        console.print("Review them with [cyan]leakguard identities[/], then claim or reject.")
-
-
-@app.command()
-def expand(profile: Optional[str] = ProfileOpt, source: Optional[list[str]] = SourceOpt,
-           workers: int = typer.Option(4, help="Parallel source runs.")) -> None:
-    """Search for the keyword itself and propose candidate emails/usernames."""
-    s, store = _open(profile)
-    _print_summary(engine.expand(s, store, source, workers))
+        console.print("Review them with [cyan]leakguard identities[/], then [cyan]claim[/] or [cyan]reject[/] (ID or value).")
 
 
 @app.command()
 def scan(profile: Optional[str] = ProfileOpt, source: Optional[list[str]] = SourceOpt,
+         stage: str = typer.Option("all", help="all | keyword (search the keyword, propose candidates) | "
+                                               "identities (deep scan of claimed identities)"),
          workers: int = typer.Option(4, help="Parallel source runs.")) -> None:
-    """Deep-scan every claimed email and username."""
+    """Discover exposures: search the keyword, propose candidates, deep-scan every claimed identity."""
+    if stage not in ("all", "keyword", "identities"):
+        console.print("[red]--stage must be all, keyword or identities[/]")
+        raise typer.Exit(2)
     s, store = _open(profile)
-    _print_summary(engine.scan(s, store, source, workers))
+    if stage in ("all", "keyword"):
+        console.print("[bold]Stage 1: keyword[/]")
+        _print_summary(engine.expand(s, store, source, workers))
+    if stage in ("all", "identities"):
+        console.print("[bold]Stage 2: claimed identities[/]")
+        _print_summary(engine.scan(s, store, source, workers))
 
 
 @app.command()
@@ -352,25 +354,8 @@ def report_cmd(profile: Optional[str] = ProfileOpt) -> None:
 
 
 @app.command()
-def sources(profile: Optional[str] = ProfileOpt) -> None:
-    """Show each source, what it handles and whether it can run in this profile."""
-    s, _ = _open(profile)
-    t = Table(title=f"Sources ({s.profile})")
-    for col in ("Source", "Handles", "Allowed", "Ready"):
-        t.add_column(col)
-    for p in ALL_PLUGINS:
-        allowed = s.source(p.name).get("allowed", False)
-        missing = [k for k in p.needs if not s.key(k)]
-        ready = "[red]missing " + ", ".join(missing) + "[/]" if missing else "[green]yes[/]"
-        if s.tools_mode == "fixtures" and isinstance(p, ToolPlugin):
-            ready = "[cyan]fixtures[/]"
-        t.add_row(p.name, ", ".join(p.kinds), "yes" if allowed else "[red]no[/]", ready)
-    console.print(t)
-
-
-@app.command()
-def doctor() -> None:
-    """Show which external OSINT tools are installed, and how to install the rest."""
+def doctor(profile: Optional[str] = ProfileOpt) -> None:
+    """Setup check: external OSINT tools, and which sources can run in this profile (keys, allowed)."""
     catalogue = json.loads((CONFIG / "tools.json").read_text())["tools"]
     table = Table(title="External tools")
     for col in ("Tool", "Phase", "Status", "Purpose"):
@@ -390,6 +375,22 @@ def doctor() -> None:
         console.print("\n[bold]Install the missing tools (run these yourself):[/]")
         for tool in missing:
             console.print(f"  [cyan]{tool['name']}[/]: {tool['install']}", soft_wrap=True)
+    try:
+        s = config.load(profile)
+    except config.ConfigError as e:
+        console.print(f"\n[yellow]sources not checked: {e}[/]")
+        return
+    t = Table(title=f"Sources ({s.profile})")
+    for col in ("Source", "Handles", "Allowed", "Ready"):
+        t.add_column(col)
+    for p in ALL_PLUGINS:
+        allowed = s.source(p.name).get("allowed", False)
+        missing_keys = [k for k in p.needs if not s.key(k)]
+        ready = "[red]missing " + ", ".join(missing_keys) + "[/]" if missing_keys else "[green]yes[/]"
+        if s.tools_mode == "fixtures" and isinstance(p, ToolPlugin):
+            ready = "[cyan]fixtures[/]"
+        t.add_row(p.name, ", ".join(p.kinds), "yes" if allowed else "[red]no[/]", ready)
+    console.print(t)
 
 
 _register_subcommands()
