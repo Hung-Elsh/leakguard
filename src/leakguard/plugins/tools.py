@@ -46,7 +46,33 @@ class ToolPlugin(Plugin):
 
 def account(source: str, site: str, url: str, evidence: str = "", data: dict | None = None) -> Finding:
     return Finding(source, "account", f"Account on {site}", url=url, evidence=evidence,
-                   severity="low", locator=site.lower(), data=data or {})
+                   severity="low", locator=site.lower(), data={"site": site, **(data or {})})
+
+
+def control_name() -> str:
+    """A username nobody owns, to catch sites that claim every username exists."""
+    return "qz" + secrets.token_hex(6) + "x"
+
+
+class ControlChecked(ToolPlugin):
+    """Username tools: re-ask every site that 'found' the owner about a random username; sites that also
+    find the random one answer 'exists' for anything, so their hit is dropped (and logged in notes)."""
+
+    def control_claimed(self, ctx, sites: list[str], tmp: Path) -> set[str]:
+        raise NotImplementedError
+
+    def run(self, ctx, ident):
+        res = super().run(ctx, ident)
+        if ctx.settings.tools_mode != "run" or not res.findings:
+            return res
+        import tempfile
+        sites = sorted({f.data.get("site", "") for f in res.findings} - {""})
+        with _LOCKS.setdefault(self.name, threading.Lock()), tempfile.TemporaryDirectory(prefix="lg-ctl-") as tmp:
+            fake = {s.lower() for s in self.control_claimed(ctx, sites, Path(tmp))}
+        dropped = sorted(f.data["site"] for f in res.findings if f.data.get("site", "").lower() in fake)
+        res.findings = [f for f in res.findings if f.data.get("site", "").lower() not in fake]
+        res.notes["control_false_positives"] = dropped
+        return res
 
 
 class Holehe(ToolPlugin):
@@ -202,31 +228,58 @@ class SocialScan(ToolPlugin):
         return res
 
 
-class Sherlock(ToolPlugin):
+class Sherlock(ControlChecked):
     name, kinds, ext, timeout, binary = "sherlock", ("username",), "csv", 900, ("sherlock",)
 
+    def control_claimed(self, ctx, sites, tmp):
+        name = control_name()
+        cmd = [find_binary("sherlock"), name, "--csv", "--folderoutput", str(tmp), "--no-color", "--timeout", "15"]
+        for site in sites:
+            cmd += ["--site", site]
+        expect_output("sherlock", run(cmd, tmp, self.timeout), None)
+        files = list(tmp.rglob(f"{name}.csv"))
+        if not files:
+            return set()
+        return {r["name"] for r in csv.DictReader(io.StringIO(files[0].read_text())) if r.get("exists") == "Claimed"}
+
     def produce(self, ctx, value, kind, tmp):
-        run([find_binary("sherlock"), value, "--csv", "--folderoutput", str(tmp), "--print-found",
-             "--no-color", "--timeout", "15"], tmp, self.timeout)
+        proc = run([find_binary("sherlock"), value, "--csv", "--folderoutput", str(tmp), "--print-found",
+                    "--no-color", "--timeout", "15"], tmp, self.timeout)
         files = list(tmp.rglob(f"{value}.csv"))
-        return files[0] if files else None
+        return expect_output("sherlock", proc, files[0] if files else None)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
         for row in csv.DictReader(io.StringIO(text)):
+            res.checked += 1
             if row.get("exists") == "Claimed":
                 res.findings.append(account(self.name, row["name"], row["url_user"]))
+            elif row.get("exists") not in ("Available", "Illegal"):
+                res.fail(f"sherlock: {row.get('exists') or 'unknown'}")
         return res
 
 
-class Maigret(ToolPlugin):
+class Maigret(ControlChecked):
     name, kinds, timeout, binary = "maigret", ("username",), 1200, ("maigret",)
 
+    def control_claimed(self, ctx, sites, tmp):
+        name = control_name()
+        cmd = [find_binary("maigret"), name, "-J", "simple", "--folderoutput", str(tmp), "--no-color",
+               "--no-progressbar", "--timeout", "20"]
+        for site in sites:
+            cmd += ["--site", site]
+        expect_output("maigret", run(cmd, tmp, self.timeout), None)
+        files = list(tmp.rglob(f"report_{name}_simple.json"))
+        if not files:
+            return set()      # the simple report lists only claimed sites: none claimed the random name
+        return {site for site, info in json.loads(files[0].read_text()).items()
+                if (info.get("status") or {}).get("status") == "Claimed"}
+
     def produce(self, ctx, value, kind, tmp):
-        run([find_binary("maigret"), value, "-J", "simple", "--folderoutput", str(tmp), "--no-color",
-             "--no-progressbar", "--timeout", "20"], tmp, self.timeout)
+        proc = run([find_binary("maigret"), value, "-J", "simple", "--folderoutput", str(tmp), "--no-color",
+                    "--no-progressbar", "--timeout", "20"], tmp, self.timeout)
         files = list(tmp.rglob(f"report_{value}_simple.json"))
-        return files[0] if files else None
+        return expect_output("maigret", proc, files[0] if files else None)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
