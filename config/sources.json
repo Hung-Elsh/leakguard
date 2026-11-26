@@ -41,7 +41,7 @@
       "rate_per_min": 10,
       "needs": [],
       "kinds": [],
-      "tos": "JustDeleteMe open dataset (jdm-contrib/jdm on GitHub): delete-account links; downloaded by `leakguard remove catalog-update`.",
+      "tos": "JustDeleteMe open dataset (jdm-contrib/jdm on GitHub): delete-account links; downloaded by `leakguard remove status` (refreshed every 30 days).",
       "removal": "n/a"
     },
     {

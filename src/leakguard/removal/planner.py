@@ -106,7 +106,7 @@ def _apply_entry(p: Plan, e: Entry | None, template: str) -> None:
 def _apply_entry_base(p: Plan, e: Entry | None, template: str) -> None:
     if e is None:
         p.method, p.template, p.contact_verified = "email", template, False
-        p.steps = "No catalog entry: find the site's privacy / account-deletion contact, then `leakguard remove contact`."
+        p.steps = "No catalog entry: find the site's privacy / account-deletion contact, then `leakguard remove set ID --contact ...`."
         return
     p.method, p.contact_verified = e.method, e.verified
     p.contact = e.email if e.method == "email" else e.url

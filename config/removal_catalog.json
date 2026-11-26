@@ -1,5 +1,5 @@
 {
-  "_comment": "How to remove the owner from a site or index. Only entries checked by hand are here (verified: true); everything else falls back to the JustDeleteMe dataset (`leakguard remove catalog-update`) or to 'find the privacy contact'. method: email (request drafted from a template) | form (Playwright fills it, submit needs --confirm) | manual (steps + link, the owner does it). Keys are site names lower-cased with non-alphanumerics removed.",
+  "_comment": "How to remove the owner from a site or index. Only entries checked by hand are here (verified: true); everything else falls back to the JustDeleteMe dataset (downloaded automatically by `leakguard remove status`) or to 'find the privacy contact'. method: email (request drafted from a template) | form (Playwright fills it, submit needs --confirm) | manual (steps + link, the owner does it). Keys are site names lower-cased with non-alphanumerics removed.",
   "sites": {
     "twitch": {
       "name": "Twitch",
@@ -80,7 +80,7 @@
       "method": "email",
       "verified": false,
       "pinned": true,
-      "steps": "Envato closes accounts only on request to its Customer Success team (no self-service). Send the request from the address registered with the Envato account (otherwise Envato asks extra ownership questions), include the username, and say it is also a personal-data deletion request (GDPR / applicable privacy law). The team's address is not in this catalog: take it from Envato's help centre 'contact' page and set it with `leakguard remove contact`."
+      "steps": "Envato closes accounts only on request to its Customer Success team (no self-service). Send the request from the address registered with the Envato account (otherwise Envato asks extra ownership questions), include the username, and say it is also a personal-data deletion request (GDPR / applicable privacy law). The team's address is not in this catalog: take it from Envato's help centre 'contact' page and set it with `leakguard remove set ID --contact ...`."
     }
   }
 }

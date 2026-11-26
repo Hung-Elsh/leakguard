@@ -1,4 +1,11 @@
-"""`leakguard remove ...`: plan, act on and verify removal actions."""
+"""`leakguard remove ...`: five commands for the whole removal workflow.
+
+  status [ID]            refresh the plan from your findings and list actions (or show one in detail)
+  do ID [--confirm]      perform an action by its method: email (draft / send), form (fill / submit), manual (steps)
+  set ID [STATE] ...     record progress: a state, a note, a contact you checked
+  add SITE -i IDENTITY   add an action for an account no scan found
+  check [ID]             re-run the sources behind actions; verified when every linked finding is gone
+"""
 
 from __future__ import annotations
 
@@ -11,14 +18,15 @@ from rich.table import Table
 
 from . import config
 from .removal import drafts, tracker
-from .store import ACTION_STATES, Store
+from .removal.catalog import ensure_jdm
+from .store import ACTION_STATES, Store, now
 
-app = typer.Typer(help="Removal workflow: plan actions from findings, send requests, verify they worked.",
-                  no_args_is_help=True)
+app = typer.Typer(help="Removal workflow: plan from findings, act, verify.", no_args_is_help=True)
 console = Console()
 ProfileOpt = typer.Option(None, "--profile", "-p", help="lab | internet (default: LEAKGUARD_PROFILE or lab)")
 STATE_COLOR = {"planned": "white", "drafted": "cyan", "requested": "yellow", "acknowledged": "yellow",
                "removed": "green", "verified": "bold green", "done": "green", "skipped": "dim"}
+OUTGOING = {"email": "send the request", "form": "submit the form"}
 
 
 def _open(profile: Optional[str]) -> tuple[config.Settings, Store]:
@@ -50,35 +58,7 @@ def _table(rows, title: str) -> None:
     console.print(t)
 
 
-@app.command()
-def plan(profile: Optional[str] = ProfileOpt) -> None:
-    """Build or refresh actions from open/protect findings (one action per site, index or broker)."""
-    s, store = _open(profile)
-    created, updated = tracker.plan(s, store)
-    console.print(f"[green]{created} new[/], {updated} updated")
-    _table(store.actions(), "Removal actions")
-
-
-@app.command("list")
-def list_(profile: Optional[str] = ProfileOpt, state: Optional[str] = typer.Option(None, help=" | ".join(ACTION_STATES)),
-          due: bool = typer.Option(False, help="Only actions whose follow-up date has passed.")) -> None:
-    """Show actions and their state."""
-    from .store import now
-    s, store = _open(profile)
-    rows = store.actions(state)
-    if due:
-        rows = [a for a in rows if a["next_check"] and a["next_check"] <= now()]
-    _table(rows, "Removal actions" + (" (due)" if due else ""))
-
-
-@app.command()
-def show(action_id: int, profile: Optional[str] = ProfileOpt) -> None:
-    """Everything about one action: steps, contact, linked findings, history."""
-    s, store = _open(profile)
-    try:
-        a = store.action(action_id)
-    except KeyError as e:
-        _fail(e)
+def _details(store: Store, a) -> None:
     console.print(f"[bold]#{a['id']} {a['title']}[/]  ({a['kind']}, {a['method']}, [{STATE_COLOR[a['state']]}]{a['state']}[/])")
     if a["contact"]:
         console.print(f"contact: {a['contact']}" + ("" if a["contact_verified"] else " [red](unverified: check before use)[/]"))
@@ -89,7 +69,7 @@ def show(action_id: int, profile: Optional[str] = ProfileOpt) -> None:
         console.print(f"  {f['id'][:8]} [{f['status']}] {f['identity']} · {f['source']}: {f['title'][:70]}"
                       + (f"\n           {f['url']}" if f["url"] else ""))
     if a["key"].startswith("manual:"):
-        console.print("  (added by you, no scan finding: verify by hand, then `leakguard remove done`)")
+        console.print("  (added by you, no scan finding: verify by hand)")
     console.print("\n[bold]History[/]")
     for h in json.loads(a["history"] or "[]"):
         console.print(f"  {h['ts']}  {h['state']:<12} {h['note']}")
@@ -98,77 +78,99 @@ def show(action_id: int, profile: Optional[str] = ProfileOpt) -> None:
 
 
 @app.command()
-def draft(action_id: int, profile: Optional[str] = ProfileOpt) -> None:
-    """Write the email request for an action and print it (nothing is sent)."""
+def status(action_id: Optional[int] = typer.Argument(None, help="Show one action in detail."),
+           state: Optional[str] = typer.Option(None, help=" | ".join(ACTION_STATES)),
+           due: bool = typer.Option(False, help="Only actions whose follow-up date has passed."),
+           profile: Optional[str] = ProfileOpt) -> None:
+    """Refresh the plan from your findings, then list actions (or show one in detail).
+    Open findings -> removal actions (one per site), protect -> one checklist, the rest skipped."""
     s, store = _open(profile)
-    try:
-        msg, path = tracker.draft(s, store, action_id)
-    except (drafts.DraftError, KeyError) as e:
-        _fail(e)
-    console.print(f"[dim]{path}[/]\n")
-    for h in ("From", "To", "Subject"):
-        console.print(f"[bold]{h}:[/] {msg[h]}")
-    console.print("\n" + msg.get_content())
+    if note := ensure_jdm(s):
+        console.print(f"[dim]{note}[/]")
+    created, _ = tracker.plan(s, store)
+    if created:
+        console.print(f"[green]{created} new action(s)[/] from your findings")
+    if action_id is not None:
+        try:
+            _details(store, store.action(action_id))
+        except KeyError as e:
+            _fail(e)
+        return
+    rows = store.actions(state)
+    if due:
+        rows = [a for a in rows if a["next_check"] and a["next_check"] <= now()]
+    _table(rows, "Removal actions" + (" (due)" if due else ""))
 
 
-@app.command()
-def send(action_id: int, confirm: bool = typer.Option(False, "--confirm", help="Really send it."),
-         profile: Optional[str] = ProfileOpt) -> None:
-    """Send an action's email request (preview unless --confirm). Lab: Mailpit. Internet: your Gmail."""
+@app.command("do")
+def do_action(action_id: int,
+              confirm: bool = typer.Option(False, "--confirm", help="Really send the email / submit the form."),
+              profile: Optional[str] = ProfileOpt) -> None:
+    """Perform an action. email: show the draft (--confirm sends it). form: fill and screenshot (--confirm
+    submits). manual / checklist: show the steps, then record it with `set ID done`."""
     s, store = _open(profile)
     try:
-        console.print(tracker.send(s, store, action_id, confirm))
+        a = store.action(action_id)
+        if a["method"] == "email":
+            msg, path = tracker.draft(s, store, action_id)
+            console.print(f"[dim]{path}[/]\n")
+            for h in ("From", "To", "Subject"):
+                console.print(f"[bold]{h}:[/] {msg[h] or '[red](no address: paste into the site contact form)[/]'}")
+            console.print("\n" + msg.get_content())
+            if confirm:
+                console.print(tracker.send(s, store, action_id, True))
+        elif a["method"] == "form":
+            r = tracker.submit_form(s, store, action_id, confirm)
+            console.print(f"filled form screenshot: {r.filled}")
+            if r.blocked:
+                console.print(f"[yellow]blocked {len(r.blocked)} out-of-scope request(s)[/] (e.g. {r.blocked[0][:80]})")
+            if r.submitted:
+                console.print(f"[green]submitted[/]; after screenshot: {r.after}; success text seen: {r.success}")
+        else:
+            _details(store, a)
+            console.print(f"\nWhen you have done it: [cyan]leakguard remove set {action_id} done --note \"...\"[/]")
+            return
     except (drafts.DraftError, KeyError, ValueError) as e:
         _fail(e)
+    if not confirm and a["method"] in OUTGOING:
+        console.print(f"\n[bold]Preview only.[/] Re-run with [cyan]--confirm[/] to {OUTGOING[a['method']]}.")
 
 
-@app.command()
-def form(action_id: int, confirm: bool = typer.Option(False, "--confirm", help="Click submit after filling."),
-         profile: Optional[str] = ProfileOpt) -> None:
-    """Fill an opt-out form in a headless browser and screenshot it; submits only with --confirm."""
+@app.command("set")
+def set_action(action_id: int,
+               state: Optional[str] = typer.Argument(None, help=" | ".join(ACTION_STATES) + " (done = you did it)"),
+               note: str = typer.Option("", help="What happened (e.g. 'site replied: deleted')."),
+               contact: Optional[str] = typer.Option(None, help="Email address or URL you checked yourself."),
+               profile: Optional[str] = ProfileOpt) -> None:
+    """Record progress on an action: a state, a note, and/or a contact you checked."""
     s, store = _open(profile)
     try:
-        r = tracker.submit_form(s, store, action_id, confirm)
-    except (drafts.DraftError, KeyError, ValueError) as e:
+        a = store.action(action_id)
+        if contact:
+            method = "email" if "@" in contact and "/" not in contact else ("manual" if a["method"] == "email" else a["method"])
+            store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=? WHERE id=?",
+                             (contact, method, action_id))
+            store.db.commit()
+            store.set_action_state(action_id, a["state"], f"contact set by owner: {contact}")
+            console.print(f"[green]contact set[/]: {contact}")
+            a = store.action(action_id)
+        if state:
+            if state == "done" and a["state"] in ("requested", "acknowledged"):
+                state = "removed"                      # you finished something already requested
+            verifiable = a["finding_ids"] != "[]" and a["kind"] not in tracker.OWNER_CONFIRMED
+            extra = {}
+            if state in ("requested", "acknowledged") or (state in ("done", "removed") and verifiable):
+                extra["next_check"] = tracker._due(a["method"])
+            elif state in ("done", "removed", "skipped", "verified"):
+                extra["next_check"] = None
+            a = store.set_action_state(action_id, state, note or "set by owner", **extra)
+            hint = " Run [cyan]leakguard remove check[/] later to verify." if extra.get("next_check") and state in ("done", "removed") else ""
+            console.print(f"#{action_id} -> [{STATE_COLOR[a['state']]}]{a['state']}[/].{hint}")
+        elif note and not contact:
+            store.set_action_state(action_id, a["state"], note)
+            console.print(f"#{action_id}: note added")
+    except (ValueError, KeyError) as e:
         _fail(e)
-    console.print(f"filled form screenshot: {r.filled}")
-    if r.blocked:
-        console.print(f"[yellow]blocked {len(r.blocked)} out-of-scope request(s)[/] (e.g. {r.blocked[0][:80]})")
-    if r.submitted:
-        console.print(f"[green]submitted[/]; after screenshot: {r.after}; success text seen: {r.success}")
-    else:
-        console.print("not submitted: check the screenshot, then re-run with [cyan]--confirm[/]")
-
-
-@app.command()
-def contact(action_id: int, value: str = typer.Argument(..., help="Email address or URL you checked yourself."),
-            profile: Optional[str] = ProfileOpt) -> None:
-    """Set the contact of an action (you checked it, so it counts as verified)."""
-    s, store = _open(profile)
-    a = store.action(action_id)
-    store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=? WHERE id=?",
-                     (value, "email" if "@" in value and "/" not in value else ("manual" if a["method"] == "email" else a["method"]),
-                      action_id))
-    store.db.commit()
-    store.set_action_state(action_id, a["state"], f"contact set by owner: {value}")
-    console.print(f"[green]contact set[/] for #{action_id}: {value}")
-
-
-@app.command()
-def done(action_id: int, note: str = typer.Option("", help="What you did."), profile: Optional[str] = ProfileOpt) -> None:
-    """Record that you did a manual step / checklist (e.g. deleted the account yourself)."""
-    s, store = _open(profile)
-    a = store.action(action_id)
-    target = "done" if a["state"] in ("planned", "drafted", "skipped") else "removed"
-    try:
-        verifiable = a["finding_ids"] != "[]" and a["kind"] not in tracker.OWNER_CONFIRMED
-        store.set_action_state(action_id, target, note or "done by owner",
-                               next_check=tracker._due(a["method"]) if verifiable else None)
-    except ValueError as e:
-        _fail(e)
-    hint = (" Run [cyan]leakguard remove check[/] later to verify."
-            if json.loads(a["finding_ids"] or "[]") and a["kind"] not in tracker.OWNER_CONFIRMED else "")
-    console.print(f"[green]{target}[/] #{action_id}.{hint}")
 
 
 @app.command("add")
@@ -193,47 +195,18 @@ def add_action(target: str = typer.Argument(..., help="Site or service, e.g. 'Zi
         "steps": (e.steps if e else "") or "Find the site's account-deletion page or privacy contact."})
     store.set_action_state(aid, store.action(aid)["state"], f"added by owner: {why or 'known account'}")
     console.print(f"[green]{'added' if created else 'updated'}[/] action #{aid} for {target}"
-                  + ("" if contact else " (no contact yet: `leakguard remove contact`)"))
-
-
-@app.command("set")
-def set_state(action_id: int, state: str = typer.Argument(..., help=" | ".join(ACTION_STATES)),
-              note: str = typer.Option("", help="Why (e.g. 'site replied: deleted')."),
-              profile: Optional[str] = ProfileOpt) -> None:
-    """Move an action to a state by hand (e.g. acknowledged when the site replies)."""
-    s, store = _open(profile)
-    try:
-        cur = store.action(action_id)
-        extra = {"next_check": tracker._due(cur["method"])} if state in ("requested", "acknowledged", "removed") else {}
-        a = store.set_action_state(action_id, state, note or "set by owner", **extra)
-    except (ValueError, KeyError) as e:
-        _fail(e)
-    console.print(f"#{action_id} -> [{STATE_COLOR[a['state']]}]{a['state']}[/]")
+                  + ("" if contact else " (no contact yet: `leakguard remove set ID --contact ...`)"))
 
 
 @app.command()
-def check(action_id: Optional[int] = typer.Argument(None, help="One action; default: all requested/removed/done."),
+def check(action_id: Optional[int] = typer.Argument(None, help="One action; default: every action waiting on a site."),
           profile: Optional[str] = ProfileOpt) -> None:
-    """Re-run the sources behind an action; verified when every linked finding is gone."""
+    """Re-run the sources behind actions; verified when every linked finding is gone."""
     s, store = _open(profile)
     ids = [action_id] if action_id else [a["id"] for a in store.actions()
                                          if a["state"] in ("requested", "acknowledged", "removed", "done")
                                          and a["kind"] not in tracker.OWNER_CONFIRMED]
+    if not ids:
+        console.print("nothing waiting on a site")
     for i in ids:
         console.print(f"#{i}: {tracker.check(s, store, i)}")
-
-
-@app.command("catalog-update")
-def catalog_update() -> None:
-    """Download the JustDeleteMe dataset (delete-account links for many sites) into your data folder."""
-    from .net import Http
-    from .removal.catalog import JDM_CACHE, JDM_URL
-    from .scope import ScopeGuard
-    s = config.load("internet")
-    with Http(s, ScopeGuard(s)).client("justdeleteme") as c:
-        r = c.get(JDM_URL)
-        r.raise_for_status()
-        sites = r.json()
-    JDM_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    JDM_CACHE.write_text(json.dumps(sites))
-    console.print(f"[green]saved[/] {len(sites)} sites to {JDM_CACHE}")

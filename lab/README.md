@@ -27,10 +27,10 @@ run, because they contact real websites. Their fixtures are parsed instead.
 ## End-to-end run
 ```bash
 rm -f data/lab.sqlite
-.venv/bin/leakguard expand -p lab        # 5 candidates
+.venv/bin/leakguard scan --stage keyword -p lab   # 5 candidates
 .venv/bin/leakguard identities -p lab
-.venv/bin/leakguard claim 3 4 5 7 -p lab && .venv/bin/leakguard reject 6 -p lab
-.venv/bin/leakguard scan -p lab          # finds the backup email as a new candidate
+.venv/bin/leakguard claim 3 4 5 7 -p lab && .venv/bin/leakguard reject zorblat-fanclub -p lab   # IDs or values
+.venv/bin/leakguard scan --stage identities -p lab   # finds the backup email as a new candidate
 .venv/bin/leakguard report -p lab
 ```
 
@@ -64,11 +64,11 @@ Mailpit and are never delivered, or at the mock broker's opt-out form. `fixtures
 sample in the JustDeleteMe format.
 
 ```bash
-.venv/bin/leakguard remove plan -p lab              # one action per site/index/broker
-.venv/bin/leakguard remove draft <id> -p lab        # e.g. the Intelligence X action
-.venv/bin/leakguard remove send <id> --confirm -p lab
-.venv/bin/leakguard remove form <id> -p lab         # broker: screenshot of the filled form
-.venv/bin/leakguard remove form <id> --confirm -p lab
+.venv/bin/leakguard remove status -p lab            # refresh the plan: one action per site/index/broker
+.venv/bin/leakguard remove do <id> -p lab           # email action: the draft (e.g. Intelligence X)
+.venv/bin/leakguard remove do <id> --confirm -p lab #   ... sent to Mailpit
+.venv/bin/leakguard remove do <id> -p lab           # broker: screenshot of the filled form
+.venv/bin/leakguard remove do <id> --confirm -p lab #   ... submitted
 .venv/bin/leakguard remove check <id> -p lab        # the broker listing is gone, so the action is verified
 rm -f lab/mock_osint/state.json                     # undo the broker opt-out
 ```

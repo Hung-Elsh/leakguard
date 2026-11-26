@@ -48,7 +48,7 @@ def send(settings: Settings, store: Store, action_id: int, confirm: bool) -> str
     a = store.action(action_id)
     if not a["contact_verified"]:
         raise drafts.DraftError(f"action {action_id}: contact {a['contact'] or '(none)'} is not verified; check it and "
-                                "set it with `leakguard remove contact` first")
+                                "set it with `leakguard remove set ID --contact ...` first")
     msg, path = draft(settings, store, action_id)
     if not msg["To"]:
         raise drafts.DraftError(f"action {action_id}: no email address to send to (draft at {path} can be pasted "
@@ -78,10 +78,10 @@ def check(settings: Settings, store: Store, action_id: int) -> str:
     """Re-run the linked sources; move the action to verified when every linked finding is gone."""
     a = store.action(action_id)
     if a["kind"] in OWNER_CONFIRMED:
-        return f"{a['kind']}: confirmed by you with `leakguard remove done`, not by a re-scan (state {a['state']})"
+        return f"{a['kind']}: confirmed by you with `leakguard remove set ID done`, not by a re-scan (state {a['state']})"
     findings = store.findings_by_ids(json.loads(a["finding_ids"] or "[]"))
     if not findings:
-        return "no linked findings to re-check; close it with `leakguard remove done` when you have done it"
+        return "no linked findings to re-check; close it with `leakguard remove set ID done` when you have done it"
     sources = sorted({f["source"] for f in findings})
     idents = {f["identity"] for f in findings}
     engine.rescan(settings, store, sources, idents)

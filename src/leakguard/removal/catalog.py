@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,30 @@ from ..paths import CONFIG, DATA, ROOT
 
 JDM_URL = "https://raw.githubusercontent.com/jdm-contrib/jdm/master/_data/sites.json"
 JDM_CACHE = DATA / "jdm_sites.json"
+
+
+JDM_MAX_AGE_DAYS = 30
+
+
+def ensure_jdm(settings: Settings) -> str:
+    """Internet profile: download the JustDeleteMe dataset when missing or older than 30 days.
+    Returns a short note for the user ("" when nothing happened). Never fatal: the old copy is kept."""
+    if settings.is_lab or settings.removal.get("jdm"):
+        return ""
+    if JDM_CACHE.exists() and time.time() - JDM_CACHE.stat().st_mtime < JDM_MAX_AGE_DAYS * 86400:
+        return ""
+    from ..net import Http
+    from ..scope import ScopeGuard
+    try:
+        with Http(settings, ScopeGuard(settings)).client("justdeleteme") as c:
+            r = c.get(JDM_URL)
+            r.raise_for_status()
+            sites = r.json()
+    except Exception as e:  # noqa: BLE001 - a stale catalog is better than no plan
+        return f"JustDeleteMe update failed ({type(e).__name__}: {str(e)[:80]}); using the existing copy"
+    JDM_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    JDM_CACHE.write_text(json.dumps(sites))
+    return f"JustDeleteMe catalog updated: {len(sites)} sites"
 
 
 def site_key(name: str) -> str:
