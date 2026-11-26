@@ -57,3 +57,18 @@ mailbox `owner-copy@seclab.test` over TLS. It uses your private identity and `~/
 4. `leakguard block -p lab --owner-copy --since 0 --limit 2000`: a dry run, plus a comparison with Gmail's own Spam label.
    `--apply` moves messages in the lab copy only.
 GreenMail keeps mail in memory, so restarting the container wipes the copy.
+
+## Removal workflow (phase 3)
+The lab catalog (`removal_catalog.json`) points every contact at fake `@*.seclab.test` addresses, which go to
+Mailpit and are never delivered, or at the mock broker's opt-out form. `fixtures/jdm_sites.json` is a small
+sample in the JustDeleteMe format.
+
+```bash
+.venv/bin/leakguard remove plan -p lab              # one action per site/index/broker
+.venv/bin/leakguard remove draft <id> -p lab        # e.g. the Intelligence X action
+.venv/bin/leakguard remove send <id> --confirm -p lab
+.venv/bin/leakguard remove form <id> -p lab         # broker: screenshot of the filled form
+.venv/bin/leakguard remove form <id> --confirm -p lab
+.venv/bin/leakguard remove check <id> -p lab        # the broker listing is gone, so the action is verified
+rm -f lab/mock_osint/state.json                     # undo the broker opt-out
+```

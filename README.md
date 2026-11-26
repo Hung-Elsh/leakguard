@@ -67,6 +67,29 @@ Every source run is logged with status (`ok`, `partial`, `skipped`, `error`, `sc
 
 Your allow/block lists and leak date go in `~/.config/leakguard/mail_rules.yaml`, which is created on the first `block`.
 
+### Removal (phase 3)
+Actions are planned from your verdicts: `open` findings become removal actions (one per site, index or broker,
+merging every tool's evidence), `protect` findings become one security checklist, the rest are skipped.
+
+| Command | What it does |
+|---|---|
+| `leakguard remove plan` | Build or refresh the actions from your findings |
+| `leakguard remove list [--state requested] [--due]` | Actions and their state (`--due`: follow-up date passed) |
+| `leakguard remove show <id>` | Steps, contact, linked findings and history of one action |
+| `leakguard remove draft <id>` | Write the email request (account deletion / GDPR erasure, leak removal, paste report, opt-out) and print it |
+| `leakguard remove send <id> --confirm` | Send it (lab: Mailpit; internet: from your Gmail). Refused if the contact is not verified |
+| `leakguard remove form <id> [--confirm]` | Fill an opt-out form in a headless browser and screenshot it; submits only with `--confirm` |
+| `leakguard remove contact <id> <email or URL>` | Set a contact you checked yourself |
+| `leakguard remove add "Site" -i <your email/username> [--url ...] [--email ...] --why "..."` | Add an action for an account no scan found (e.g. known from a mail) |
+| `leakguard remove done <id> --note "..."` | You did a manual step (deleted the account, finished the checklist) |
+| `leakguard remove set <id> acknowledged --note "..."` | Record a reply from the site |
+| `leakguard remove check [<id>]` | Re-run the sources behind an action; `verified` only when every linked finding is gone |
+| `leakguard remove catalog-update` | Download the JustDeleteMe dataset (delete-account links for many sites) |
+
+States: planned → drafted → requested → acknowledged → removed → verified (also `done` for manual steps and
+checklists, `skipped`). Illegal jumps are refused and every change is kept in the action's history. Drafts and
+screenshots are private (`~/.local/share/leakguard/`, mode 600) and never contain leaked passwords.
+
 ### Repository safety
 | Command | What it does |
 |---|---|
@@ -82,6 +105,6 @@ The lab walkthrough is in [lab/README.md](lab/README.md).
 | 0 | Skeleton, tool check | done |
 | 1 | Expand + discovery | done: 19 sources; first internet scans run |
 | 2 | Mail blocking | done: lab corpus, real-mail copy matches Gmail spam 9/9 with 0 false positives |
-| 3 | Removal workflow | next |
+| 3 | Removal workflow | lab done; internet plan checked (catalog fixes from real data), actions in progress |
 | 4 | Monitor + scorecard | |
 | 5 | Internet cleanup | in progress (discovery) |
