@@ -3,3 +3,4 @@ spotify,spotify.com,register,True,False,True,None,None,None
 adobe,adobe.com,login,False,False,True,me*******@s*****.test,None,None
 discord,discord.com,register,False,False,True,None,None,None
 twitter,twitter.com,register,False,False,False,None,None,None
+instagram,instagram.com,register,True,True,False,None,None,None

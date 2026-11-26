@@ -4,6 +4,8 @@
    Fall back to "PROFILE", GHunt's default container.
 2. helpers/gmaps.py: the Maps stats endpoint no longer returns JSON -> JSONDecodeError.
    Skip the Maps step instead of crashing, so Calendar and the rest still run.
+3. modules/email.py: `--json` output uses `photos` and `reviews`, which 2.3.4 never defines
+   (their collection is commented out upstream) -> NameError, no JSON file. Define them as empty lists.
 
 Usage: python3 scripts/patch_ghunt.py [path-to-ghunt-package]
 Re-run after any `pipx upgrade ghunt` / reinstall. Each file gets a .bak copy the first time.
@@ -60,11 +62,24 @@ def patch_gmaps(pkg: Path) -> str:
     return "gmaps.py: patched"
 
 
+def patch_email(pkg: Path) -> str:
+    path = pkg / "modules/email.py"
+    src, nl = read(path)
+    old = "    err, stats = await gmaps.get_reviews(as_client, target.personId)" + nl
+    new = old + "    photos, reviews = [], []   # leakguard patch: undefined in GHunt 2.3.4" + nl
+    if new in src:
+        return "email.py: already patched"
+    if src.count(old) != 1:
+        return "email.py: expected code not found, NOT changed (GHunt version differs?)"
+    write(path, src.replace(old, new))
+    return "email.py: patched"
+
+
 def main() -> None:
     pkg = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
     if not (pkg / "parsers/people.py").exists():
         sys.exit(f"GHunt package not found at {pkg}")
-    for fn in (patch_people, patch_gmaps):
+    for fn in (patch_people, patch_gmaps, patch_email):
         print(fn(pkg))
 
 

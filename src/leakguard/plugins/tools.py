@@ -5,15 +5,21 @@ from __future__ import annotations
 import csv
 import io
 import json
+import secrets
+import threading
 import time
 from pathlib import Path
 
-from ..models import Finding, PluginResult, candidates_in_text, mask
-from ..runner import ToolError, find_binary, run, tool_output
+from ..models import Finding, PluginResult, breach_severity, candidates_in_text, mask
+from ..runner import ToolError, expect_output, find_binary, run, tool_output
 from .base import Context, Plugin, SkipSource
 
 
+_LOCKS: dict[str, threading.Lock] = {}
+
+
 class ToolPlugin(Plugin):
+    """One instance of each tool at a time: parallel runs of the same tool trigger rate limits."""
     ext = "json"
     timeout = 600
     binary: tuple[str, ...] = ()
@@ -32,8 +38,9 @@ class ToolPlugin(Plugin):
         raise NotImplementedError
 
     def run(self, ctx, ident):
-        text = tool_output(ctx.settings, ctx.guard, self.name, ident.value, self.ext,
-                           lambda tmp: self.produce(ctx, ident.value, ident.kind, tmp))
+        with _LOCKS.setdefault(self.name, threading.Lock()):
+            text = tool_output(ctx.settings, ctx.guard, self.name, ident.value, self.ext,
+                               lambda tmp: self.produce(ctx, ident.value, ident.kind, tmp))
         return self.parse(ctx, text, ident.value, ident.kind) if text else PluginResult()
 
 
@@ -47,14 +54,18 @@ class Holehe(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         # -NP: no password-recovery probes, so no reset mails are triggered
-        run([find_binary("holehe"), value, "--only-used", "--no-color", "--no-clear", "-NP", "-C"], tmp, self.timeout)
+        proc = run([find_binary("holehe"), value, "--only-used", "--no-color", "--no-clear", "-NP", "-C"],
+                   tmp, self.timeout)
         files = sorted(tmp.glob("holehe_*_results.csv"))
-        return files[-1] if files else None
+        return expect_output("holehe", proc, files[-1] if files else None)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
         for row in csv.DictReader(io.StringIO(text)):
+            res.checked += 1
             if row.get("exists") != "True":
+                if row.get("rateLimit") == "True":
+                    res.fail("rate limited")             # unknown, not "no account"
                 continue
             extra = {k: row[k] for k in ("emailrecovery", "phoneNumber", "others") if row.get(k) not in (None, "", "None")}
             res.findings.append(account(self.name, row["domain"] or row["name"], f"https://{row['domain']}",
@@ -69,8 +80,7 @@ class H8mail(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         out = tmp / "h8mail.json"
-        run([find_binary("h8mail"), "-t", value, "-j", str(out)], tmp, self.timeout)
-        return out
+        return expect_output("h8mail", run([find_binary("h8mail"), "-t", value, "-j", str(out)], tmp, self.timeout), out)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
@@ -93,8 +103,7 @@ class GHunt(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         out = tmp / "ghunt.json"
-        run([find_binary("ghunt"), "email", value, "--json", str(out)], tmp, self.timeout)
-        return out
+        return expect_output("ghunt", run([find_binary("ghunt"), "email", value, "--json", str(out)], tmp, self.timeout), out)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
@@ -133,8 +142,7 @@ class Mosint(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         out = tmp / "mosint.json"
-        run([find_binary(*self.binary), value, "-s", "-o", str(out)], tmp, self.timeout)
-        return out
+        return expect_output("mosint", run([find_binary(*self.binary), value, "-s", "-o", str(out)], tmp, self.timeout), out)
 
     def parse(self, ctx, text, value, kind):
         d, res = json.loads(text), PluginResult()
@@ -177,13 +185,16 @@ class SocialScan(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         out = tmp / "socialscan.json"
-        run([find_binary("socialscan"), value, "--json", str(out)], tmp, self.timeout)
-        return out
+        return expect_output("socialscan", run([find_binary("socialscan"), value, "--json", str(out)], tmp, self.timeout), out)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
         for rows in json.loads(text).values():
             for r in rows:
+                res.checked += 1
+                if r.get("success") != "True":
+                    res.fail(str(r.get("message", "no answer")).split(" - ")[0][:60])
+                    continue
                 # values are stringified; "available: False" on a valid query = taken/registered
                 if r.get("success") == "True" and r.get("valid") == "True" and r.get("available") == "False":
                     res.findings.append(account(self.name, r.get("platform", "?"), r.get("link", ""),
@@ -221,7 +232,10 @@ class Maigret(ToolPlugin):
         res = PluginResult()
         for site, info in json.loads(text).items():
             st = info.get("status") or {}
+            res.checked += 1
             if st.get("status") != "Claimed":
+                if st.get("status") not in ("Available", "Illegal"):
+                    res.fail(f"maigret: {st.get('status') or 'unknown'}")
                 continue
             ids = st.get("ids") or {}
             res.findings.append(account(self.name, site, st.get("url") or info.get("url_user", ""),
@@ -241,14 +255,19 @@ class Blackbird(ToolPlugin):
         py = home / ".venv/bin/python"
         started = time.time()
         flag = "-e" if kind == "email" else "-u"
-        run([str(py), str(script), flag, value, "--json", "--no-update"], home, self.timeout)
+        data = home / "data" / ("email-data.json" if kind == "email" else "wmn-data.json")
+        update = [] if not data.exists() else ["--no-update"]       # first run: let blackbird fetch its site list
+        proc = run([str(py), str(script), flag, value, "--json", *update], home, self.timeout)
         files = [p for p in (home / "results").rglob("*.json") if p.stat().st_mtime >= started]
-        return max(files, key=lambda p: p.stat().st_mtime) if files else None
+        return expect_output("blackbird", proc, max(files, key=lambda p: p.stat().st_mtime) if files else None)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
         rows = json.loads(text)
         for r in rows if isinstance(rows, list) else rows.get("results", []):
+            res.checked += 1
+            if r.get("status") == "ERROR":
+                res.fail("blackbird: site error")
             if r.get("status") == "FOUND":
                 res.findings.append(account(self.name, r.get("name", "?"), r.get("url", ""),
                                             r.get("category", ""), {"metadata": r.get("metadata")}))
@@ -272,8 +291,9 @@ class SpiderFoot(ToolPlugin):
         p = run([find_binary("spiderfoot"), "-s", target, "-u", "passive", "-o", "json", "-q",
                  "-max-threads", "10"], tmp, self.timeout)
         out = tmp / "spiderfoot.json"
-        out.write_text(p.stdout)
-        return out
+        if p.stdout.strip():
+            out.write_text(p.stdout)
+        return expect_output("spiderfoot", p, out if p.stdout.strip() else None)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()
