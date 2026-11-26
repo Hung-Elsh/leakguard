@@ -384,9 +384,19 @@ def monitor(profile: Optional[str] = ProfileOpt, source: Optional[list[str]] = S
 
 
 @app.command("report")
-def report_cmd(profile: Optional[str] = ProfileOpt) -> None:
-    """Write a Markdown + JSON report to reports/."""
+def report_cmd(profile: Optional[str] = ProfileOpt,
+               final: bool = typer.Option(False, "--final", help="Readable cleanup report: found, done, waiting, scorecard."),
+               share: bool = typer.Option(False, "--share", help="With --final: mask your identities so it can be shared.")) -> None:
+    """Write a report: Markdown + JSON (default), or the final cleanup report (--final, --share to mask)."""
     s, store = _open(profile)
+    if final or share:
+        try:
+            path = report.write_final(s, store, share)
+        except RuntimeError as e:
+            console.print(f"[red]{e}[/]")
+            raise typer.Exit(1)
+        console.print(f"final report: [cyan]{path}[/]" + (" [dim](identities masked)[/]" if share else ""))
+        return
     md, js = report.write(s, store)
     console.print(f"report: [cyan]{md}[/]\n  json: [cyan]{js}[/]")
 

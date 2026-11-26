@@ -114,3 +114,101 @@ def write(settings: Settings, store: Store) -> tuple[Path, Path]:
     md.write_text(to_markdown(rep) + "\n" + "\n".join(scorecard_markdown(rep["scorecard"])) + "\n")
     js.write_text(json.dumps(rep, indent=2, default=str))
     return md, js
+
+
+# ---- final cleanup report (optionally masked for sharing) -----------------------------------------
+import re as _re
+
+KIND_LABEL = {"account_delete": "account deletion", "leak_removal": "leak-index removal", "broker_optout": "broker opt-out",
+              "paste_report": "paste report", "protect_checklist": "protect checklist",
+              "rotate_password": "password rotation", "hibp_optout": "HIBP opt-out", "manual": "manual step",
+              "data_erasure": "data erasure"}
+
+
+def _mask_value(v: str) -> str:
+    """jane.doe42@example.com -> j********2@e*****e.com ; jane.doe42 -> j********2"""
+    def part(x: str) -> str:
+        return x if len(x) <= 2 else x[0] + "*" * (len(x) - 2) + x[-1]
+    if "@" in v:
+        local, _, dom = v.partition("@")
+        name, _, tld = dom.rpartition(".")
+        return f"{part(local)}@{part(name)}.{tld}" if name else f"{part(local)}@{part(dom)}"
+    return part(v)
+
+
+def masker(store: Store, settings: Settings):
+    """A function that masks every private term (identities, keyword, owner name, Google IDs) in a text."""
+    from .leaks import private_terms
+    terms = {i.value for i in store.identities() if i.status != "rejected"} | {settings.keyword}
+    terms |= private_terms() if not settings.is_lab else set()
+    if (settings.owner or {}).get("full_name"):
+        terms.add(settings.owner["full_name"])
+    ordered = sorted({t for t in terms if len(t) >= 4}, key=len, reverse=True)
+    patterns = [(_re.compile(_re.escape(t), _re.I), _mask_value(t.lower())) for t in ordered]
+
+    def mask(text: str) -> str:
+        text = str(text or "")
+        for rx, rep in patterns:
+            text = rx.sub(rep, text)
+        return _re.sub(r"\b\d{15,}\b", lambda m: m.group(0)[:3] + "…", text)     # Google (Gaia) and similar IDs
+    return mask, ordered
+
+
+def final_markdown(settings: Settings, store: Store, share: bool) -> str:
+    import json as _json
+    from .monitor import scorecard, scorecard_markdown
+    mask, _ = masker(store, settings) if share else (lambda t: str(t or ""), [])
+    sc, actions, findings = scorecard(store), store.actions(), store.findings()
+    counted = [f for f in findings if f["severity"] != "info" and (f["disposition"] or "open") in ("open", "protect")]
+    lines = [f"# Cleanup report: `{mask(settings.keyword)}` ({settings.profile})",
+             f"Period: {(sc['first_scan'] or '-')[:10]} to {datetime.now().date()}" + (" · identities masked for sharing" if share else ""),
+             "", "## Summary"]
+    lines += scorecard_markdown(sc)[1:]
+    lines += ["", "## What was found", "| Category | High | Medium | Low | Verdicts |", "|---|---|---|---|---|"]
+    by_cat: dict[str, Counter] = {}
+    for f in counted:
+        by_cat.setdefault(f["category"], Counter())[f["severity"]] += 1
+        by_cat[f["category"]][f"v:{f['disposition'] or 'open'}"] += 1
+    for cat, c in sorted(by_cat.items()):
+        verdicts = ", ".join(f"{k[2:]} {v}" for k, v in sorted(c.items()) if k.startswith("v:"))
+        lines.append(f"| {cat} | {c['high']} | {c['medium']} | {c['low']} | {verdicts} |")
+    judged = Counter(f["disposition"] for f in findings if f["disposition"] in ("false_positive", "accepted"))
+    if judged:
+        lines += ["", f"Not counted: {judged.get('false_positive', 0)} false positives (e.g. sites that 'find' any "
+                      f"username), {judged.get('accepted', 0)} accepted. Info-only search look-alikes are not counted either."]
+    lines += ["", "## What was done", "| # | Target | Action | State | Requested | Last update | Outcome / note |",
+              "|---|---|---|---|---|---|---|"]
+    for a in actions:
+        hist = _json.loads(a["history"] or "[]")
+        req = next((h["ts"][:10] for h in hist if h["state"] in ("requested", "done")), "-")
+        note = next((h["note"] for h in reversed(hist) if h["note"] not in ("plan", "draft written")), "")
+        lines.append(f"| {a['id']} | {mask(a['target'])} | {KIND_LABEL.get(a['kind'], a['kind'])} | {a['state']} | {req} "
+                     f"| {(a['updated'] or '')[:10]} | {_md_escape(mask(note))[:140]} |")
+    waiting = [a for a in actions if a["state"] in ("requested", "acknowledged")]
+    if waiting:
+        lines += ["", "## Waiting on the sites", *[f"- #{a['id']} {mask(a['target'])}: follow-up {(a['next_check'] or '-')[:10]}"
+                                                    for a in waiting]]
+    lines += ["", "## How the numbers are kept honest",
+              "- Only identities the owner claimed are scanned or cleaned; findings carry the owner's verdict.",
+              "- A removal counts only when a re-scan of the sources that found it no longer sees it; one that comes "
+              "back is reopened.",
+              "- Breach records are permanent (never counted as removed); partial or failed source runs never mark "
+              "anything gone; search results are re-rated with the current rules.",
+              "- Leaked passwords and API keys never appear in reports, drafts or logs."]
+    return "\n".join(lines) + "\n"
+
+
+def write_final(settings: Settings, store: Store, share: bool) -> Path:
+    text = final_markdown(settings, store, share)
+    if share:
+        _, terms = masker(store, settings)
+        low = text.lower()
+        left = [t for t in terms if t.lower() in low]
+        if left:
+            raise RuntimeError(f"refusing to write the shared report: {len(left)} private term(s) still present")
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    kind = "final-shared" if share else "final"
+    path = REPORTS / f"{settings.profile}-{kind}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.md"
+    path.write_text(text)
+    path.chmod(0o600)
+    return path

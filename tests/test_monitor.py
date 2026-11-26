@@ -96,3 +96,14 @@ def test_rerate_fixes_stale_search_ratings(lab, store):
                                                 severity="medium", locator="x")])
     assert monitor.rerate(lab, store) == 1
     assert store.findings()[0]["severity"] == "info"                 # no owned name or email on the page
+
+
+def test_shared_final_report_masks_every_identity(lab, store):
+    from leakguard import report
+    _save(store, "zorblat11@seclab.test", "holehe", [Finding("holehe", "account", "Account on forum",
+                                                             url="https://forum.example/u/zorblat11", locator="f")])
+    store.upsert_action({"key": "account:forum", "kind": "account_delete", "method": "manual",
+                         "target": "forum (zorblat11)", "finding_ids": [store.findings()[0]["id"]]})
+    text = report.final_markdown(lab, store, share=True)
+    assert "zorblat" not in text.lower() and "z*****t" in text
+    assert report._mask_value("abcdefgh11@gmail.com") == "a********1@g***l.com"
