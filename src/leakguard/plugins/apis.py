@@ -53,7 +53,7 @@ class HIBP(Plugin):
 
 
 class IntelX(Plugin):
-    name, kinds, needs = "intelx", ("email", "username", "keyword"), ("INTELX_API_KEY",)
+    name, kinds, needs = "intelx", ("email",), ("INTELX_API_KEY",)   # selectors only, not bare words
 
     def run(self, ctx, ident):
         base = _endpoint(ctx, "intelx")
@@ -292,6 +292,7 @@ class GitHub(Plugin):
                                 self.name, "code", f"Email in {it['repository']['full_name']}/{it['path']}",
                                 url=it.get("html_url", ""), severity="medium", locator=it.get("html_url", it["path"])))
             else:
+                # usernames / keyword: accounts, repositories and commits that use the name
                 r = c.get(f"{base}/search/users", params={"q": f"{ident.value} in:login", "per_page": 50})
                 r.raise_for_status()
                 for u in r.json().get("items", []):
@@ -301,6 +302,42 @@ class GitHub(Plugin):
                             self.name, "account", f"GitHub user {login}", url=u.get("html_url", ""),
                             severity="low", locator=login))
                         res.candidates += candidates_in_text(login, ctx.keyword, f"github:{login}")
+                r = c.get(f"{base}/search/repositories",
+                          params={"q": f"{ident.value} in:name,description,readme", "per_page": 50})
+                r.raise_for_status()
+                for repo in r.json().get("items", []):
+                    level = ctx.match_level(f"{repo['full_name']} {repo.get('description') or ''}")
+                    res.findings.append(Finding(
+                        self.name, "code", f"Repository {repo['full_name']} mentions '{ident.value}'",
+                        url=repo.get("html_url", ""), evidence=(repo.get("description") or "")[:200],
+                        severity=SEVERITY_BY_MATCH[level], locator=f"repo:{repo['full_name']}",
+                        data={"owner": repo.get("owner", {}).get("login"), "fork": repo.get("fork"), "match": level}))
+                    res.candidates += candidates_in_text(f"{repo['full_name']} {repo.get('description') or ''}",
+                                                         ctx.keyword, f"github:{repo['full_name']}")
+                r = c.get(f"{base}/search/commits", params={"q": f"author-name:{ident.value}", "per_page": 100})
+                r.raise_for_status()
+                by_repo: dict[str, list] = {}
+                for it in r.json().get("items", []):
+                    by_repo.setdefault(it["repository"]["full_name"], []).append(it)
+                for repo, commits in by_repo.items():
+                    emails = sorted({c_["commit"]["author"].get("email", "") for c_ in commits} - {""})
+                    level = ctx.match_level(" ".join(emails)) if emails else "exact"
+                    res.findings.append(Finding(
+                        self.name, "code", f"{len(commits)} commit(s) in {repo} authored as '{ident.value}'",
+                        url=commits[0].get("html_url", f"https://github.com/{repo}"),
+                        evidence="author emails: " + ", ".join(emails)[:200],
+                        severity="high" if level == "email" else "low",
+                        locator=f"commits-by-name:{repo}", data={"repo": repo, "author_emails": emails, "match": level}))
+                    res.candidates += candidates_in_text(" ".join(emails), ctx.keyword, f"github-commits:{repo}")
+                if tok:
+                    r = c.get(f"{base}/search/code", params={"q": f'"{ident.value}"', "per_page": 50})
+                    if r.status_code == 200:
+                        for it in r.json().get("items", []):
+                            res.findings.append(Finding(
+                                self.name, "code", f"'{ident.value}' in {it['repository']['full_name']}/{it['path']}",
+                                url=it.get("html_url", ""), severity="low", locator=it.get("html_url", it["path"])))
+                    else:
+                        r.raise_for_status()
         return res
 
 

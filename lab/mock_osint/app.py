@@ -153,8 +153,12 @@ def ubuntu_keyserver():
 @app.get("/github/search/commits")
 def gh_commits():
     q = request.args.get("q", "")
-    email = q.split("author-email:", 1)[-1].strip().lower()
-    items = SEED["github_commits"].get(email, [])
+    if "author-name:" in q:
+        name = q.split("author-name:", 1)[-1].strip().lower()
+        items = [c for cs in SEED["github_commits"].values() for c in cs
+                 if c["commit"]["author"]["name"].lower() == name]
+    else:
+        items = SEED["github_commits"].get(q.split("author-email:", 1)[-1].strip().lower(), [])
     return jsonify({"total_count": len(items), "incomplete_results": False, "items": items})
 
 
@@ -163,6 +167,13 @@ def gh_users():
     term = request.args.get("q", "").split(" in:", 1)[0].strip().lower()
     items = [{"login": u, "html_url": f"http://127.0.0.1:5055/github-web/{u}"}
              for u in SEED["github_users"] if term in u.lower()]
+    return jsonify({"total_count": len(items), "items": items})
+
+
+@app.get("/github/search/repositories")
+def gh_repos():
+    term = request.args.get("q", "").split(" in:", 1)[0].strip().lower()
+    items = [r for r in SEED.get("github_repos", []) if term in f"{r['full_name']} {r.get('description', '')}".lower()]
     return jsonify({"total_count": len(items), "items": items})
 
 

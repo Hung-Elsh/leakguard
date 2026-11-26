@@ -1,83 +1,246 @@
 {
   "_comment": "Fake exposures for the lab identity. zorblat11@seclab.test is the seed; zorblat.old@seclab.test, zorblat_x and zorblat.backup@seclab.test are to be discovered; zorblat-fanclub is a decoy that is NOT the owner (test the claim gate by rejecting it).",
-
   "hibp_breaches": {
     "zorblat11@seclab.test": [
-      {"Name": "LabShop2019", "Title": "LabShop", "Domain": "labshop.seclab.test", "BreachDate": "2019-04-02",
-       "DataClasses": ["Email addresses", "Passwords", "Usernames"], "IsVerified": true},
-      {"Name": "LabForum2021", "Title": "LabForum", "Domain": "forum.seclab.test", "BreachDate": "2021-09-14",
-       "DataClasses": ["Email addresses", "IP addresses", "Usernames"], "IsVerified": true}
+      {
+        "Name": "LabShop2019",
+        "Title": "LabShop",
+        "Domain": "labshop.seclab.test",
+        "BreachDate": "2019-04-02",
+        "DataClasses": [
+          "Email addresses",
+          "Passwords",
+          "Usernames"
+        ],
+        "IsVerified": true
+      },
+      {
+        "Name": "LabForum2021",
+        "Title": "LabForum",
+        "Domain": "forum.seclab.test",
+        "BreachDate": "2021-09-14",
+        "DataClasses": [
+          "Email addresses",
+          "IP addresses",
+          "Usernames"
+        ],
+        "IsVerified": true
+      }
     ],
     "zorblat.old@seclab.test": [
-      {"Name": "OldGame2014", "Title": "OldGame", "Domain": "oldgame.seclab.test", "BreachDate": "2014-08-20",
-       "DataClasses": ["Email addresses", "Passwords"], "IsVerified": false}
+      {
+        "Name": "OldGame2014",
+        "Title": "OldGame",
+        "Domain": "oldgame.seclab.test",
+        "BreachDate": "2014-08-20",
+        "DataClasses": [
+          "Email addresses",
+          "Passwords"
+        ],
+        "IsVerified": false
+      }
     ]
   },
   "hibp_pastes": {
     "zorblat11@seclab.test": [
-      {"Source": "Pastebin", "Id": "LabP4st3", "Title": "combo list 2023", "Date": "2023-03-11T10:00:00Z", "EmailCount": 1200}
+      {
+        "Source": "Pastebin",
+        "Id": "LabP4st3",
+        "Title": "combo list 2023",
+        "Date": "2023-03-11T10:00:00Z",
+        "EmailCount": 1200
+      }
     ]
   },
-
   "intelx": {
     "zorblat": [
-      {"systemid": "ix-0001", "name": "forum_dump_2022.txt (zorblat.old@seclab.test)", "bucket": "leaks.public", "date": "2022-06-01", "media": 1, "added": "2022-06-03"},
-      {"systemid": "ix-0002", "name": "pastebin.com/LabP4st3", "bucket": "pastes", "date": "2023-03-11", "media": 1, "added": "2023-03-12"}
+      {
+        "systemid": "ix-0001",
+        "name": "forum_dump_2022.txt (zorblat.old@seclab.test)",
+        "bucket": "leaks.public",
+        "date": "2022-06-01",
+        "media": 1,
+        "added": "2022-06-03"
+      },
+      {
+        "systemid": "ix-0002",
+        "name": "pastebin.com/LabP4st3",
+        "bucket": "pastes",
+        "date": "2023-03-11",
+        "media": 1,
+        "added": "2023-03-12"
+      }
     ],
     "zorblat11@seclab.test": [
-      {"systemid": "ix-0002", "name": "pastebin.com/LabP4st3", "bucket": "pastes", "date": "2023-03-11", "media": 1, "added": "2023-03-12"}
+      {
+        "systemid": "ix-0002",
+        "name": "pastebin.com/LabP4st3",
+        "bucket": "pastes",
+        "date": "2023-03-11",
+        "media": 1,
+        "added": "2023-03-12"
+      }
     ]
   },
-
   "search": [
-    {"title": "combo list 2023 - Pastebin", "link": "http://127.0.0.1:5055/paste/LabP4st3",
-     "snippet": "... zorblat11@seclab.test:hunter22 ... 1200 lines ..."},
-    {"title": "zorblat_x - LabForum member profile", "link": "http://127.0.0.1:5055/forum/u/zorblat_x",
-     "snippet": "Member since 2015. Posts: 412. Contact: zorblat.old@seclab.test"},
-    {"title": "Zor Blat - PeopleFinder (lab mock)", "link": "http://127.0.0.1:5055/broker/person/1",
-     "snippet": "Zor Blat, Lab City. Email zorblat11@seclab.test, phone +00 000 0000"},
-    {"title": "zorblat-fanclub (GitHub)", "link": "http://127.0.0.1:5055/github-web/zorblat-fanclub",
-     "snippet": "Fan club repository for a streamer. Not related."}
+    {
+      "title": "combo list 2023 - Pastebin",
+      "link": "http://127.0.0.1:5055/paste/LabP4st3",
+      "snippet": "... zorblat11@seclab.test:hunter22 ... 1200 lines ..."
+    },
+    {
+      "title": "zorblat_x - LabForum member profile",
+      "link": "http://127.0.0.1:5055/forum/u/zorblat_x",
+      "snippet": "Member since 2015. Posts: 412. Contact: zorblat.old@seclab.test"
+    },
+    {
+      "title": "Zor Blat - PeopleFinder (lab mock)",
+      "link": "http://127.0.0.1:5055/broker/person/1",
+      "snippet": "Zor Blat, Lab City. Email zorblat11@seclab.test, phone +00 000 0000"
+    },
+    {
+      "title": "zorblat-fanclub (GitHub)",
+      "link": "http://127.0.0.1:5055/github-web/zorblat-fanclub",
+      "snippet": "Fan club repository for a streamer. Not related."
+    }
   ],
-
   "leakcheck": {
-    "zorblat11@seclab.test": {"fields": ["email", "password", "username"],
-                                "sources": [{"name": "LabShop", "date": "2019-04"}, {"name": "LabForum", "date": "2021-09"}]},
-    "zorblat_x": {"fields": ["username", "email", "ip"], "sources": [{"name": "LabForum", "date": "2021-09"}]}
+    "zorblat11@seclab.test": {
+      "fields": [
+        "email",
+        "password",
+        "username"
+      ],
+      "sources": [
+        {
+          "name": "LabShop",
+          "date": "2019-04"
+        },
+        {
+          "name": "LabForum",
+          "date": "2021-09"
+        }
+      ]
+    },
+    "zorblat_x": {
+      "fields": [
+        "username",
+        "email",
+        "ip"
+      ],
+      "sources": [
+        {
+          "name": "LabForum",
+          "date": "2021-09"
+        }
+      ]
+    }
   },
-
   "psbdmp": {
-    "zorblat": [{"id": "LabP4st3", "tags": "combo", "length": 52000, "time": "2023-03-11",
-                   "text": "...\nzorblat11@seclab.test:hunter22\nsomeone@seclab.test:qwerty\n..."}],
-    "zorblat11@seclab.test": [{"id": "LabP4st3", "tags": "combo", "length": 52000, "time": "2023-03-11",
-                                 "text": "...\nzorblat11@seclab.test:hunter22\n..."}]
+    "zorblat": [
+      {
+        "id": "LabP4st3",
+        "tags": "combo",
+        "length": 52000,
+        "time": "2023-03-11",
+        "text": "...\nzorblat11@seclab.test:hunter22\nsomeone@seclab.test:qwerty\n..."
+      }
+    ],
+    "zorblat11@seclab.test": [
+      {
+        "id": "LabP4st3",
+        "tags": "combo",
+        "length": 52000,
+        "time": "2023-03-11",
+        "text": "...\nzorblat11@seclab.test:hunter22\n..."
+      }
+    ]
   },
-
   "gravatar": {
-    "zorblat11@seclab.test": {"display_name": "zorblat", "location": "Lab City", "description": "gamer",
-                                "profile_url": "http://127.0.0.1:5055/gravatar-web/zorblat",
-                                "verified_accounts": [{"service_label": "LabForum", "url": "http://127.0.0.1:5055/forum/u/zorblat_x"}]}
+    "zorblat11@seclab.test": {
+      "display_name": "zorblat",
+      "location": "Lab City",
+      "description": "gamer",
+      "profile_url": "http://127.0.0.1:5055/gravatar-web/zorblat",
+      "verified_accounts": [
+        {
+          "service_label": "LabForum",
+          "url": "http://127.0.0.1:5055/forum/u/zorblat_x"
+        }
+      ]
+    }
   },
-
   "pgp_ubuntu": {
     "zorblat.old@seclab.test": "info:1:1\npub:ABCDEF0123456789:1:2048:1400000000::\nuid:Zor Blat <zorblat.old@seclab.test>:1400000000::\n"
   },
   "pgp_openpgp": {},
-
   "github_commits": {
     "zorblat11@seclab.test": [
-      {"sha": "a1b2c3", "html_url": "http://127.0.0.1:5055/github-web/zorblat/dotfiles/commit/a1b2c3",
-       "commit": {"message": "add zshrc", "author": {"name": "zorblat", "email": "zorblat11@seclab.test"}},
-       "repository": {"full_name": "zorblat/dotfiles"}},
-      {"sha": "d4e5f6", "html_url": "http://127.0.0.1:5055/github-web/zorblat/dotfiles/commit/d4e5f6",
-       "commit": {"message": "update vimrc", "author": {"name": "zorblat", "email": "zorblat11@seclab.test"}},
-       "repository": {"full_name": "zorblat/dotfiles"}}
+      {
+        "sha": "a1b2c3",
+        "html_url": "http://127.0.0.1:5055/github-web/zorblat/dotfiles/commit/a1b2c3",
+        "commit": {
+          "message": "add zshrc",
+          "author": {
+            "name": "zorblat",
+            "email": "zorblat11@seclab.test"
+          }
+        },
+        "repository": {
+          "full_name": "zorblat/dotfiles"
+        }
+      },
+      {
+        "sha": "d4e5f6",
+        "html_url": "http://127.0.0.1:5055/github-web/zorblat/dotfiles/commit/d4e5f6",
+        "commit": {
+          "message": "update vimrc",
+          "author": {
+            "name": "zorblat",
+            "email": "zorblat11@seclab.test"
+          }
+        },
+        "repository": {
+          "full_name": "zorblat/dotfiles"
+        }
+      }
     ]
   },
-  "github_users": ["zorblat", "zorblat_x", "zorblat-fanclub", "unrelated-user"],
-
+  "github_users": [
+    "zorblat",
+    "zorblat_x",
+    "zorblat-fanclub",
+    "unrelated-user"
+  ],
   "broker_records": [
-    {"id": 1, "name": "Zor Blat", "email": "zorblat11@seclab.test", "username": "zorblat_x",
-     "city": "Lab City", "phone": "+00 000 0000", "age": "30-35"}
+    {
+      "id": 1,
+      "name": "Zor Blat",
+      "email": "zorblat11@seclab.test",
+      "username": "zorblat_x",
+      "city": "Lab City",
+      "phone": "+00 000 0000",
+      "age": "30-35"
+    }
+  ],
+  "github_repos": [
+    {
+      "full_name": "zorblat/dotfiles",
+      "html_url": "http://127.0.0.1:5055/github-web/zorblat/dotfiles",
+      "description": "my configs (contact zorblat11@seclab.test)",
+      "fork": false,
+      "owner": {
+        "login": "zorblat"
+      }
+    },
+    {
+      "full_name": "someone/awesome-list",
+      "html_url": "http://127.0.0.1:5055/github-web/someone/awesome-list",
+      "description": "list that credits zorblat_x",
+      "fork": false,
+      "owner": {
+        "login": "someone"
+      }
+    }
   ]
 }
