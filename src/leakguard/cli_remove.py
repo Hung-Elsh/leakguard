@@ -19,6 +19,7 @@ from rich.table import Table
 from . import config
 from .removal import drafts, tracker
 from .removal.catalog import ensure_jdm
+from .removal.planner import TEMPLATES
 from .store import ACTION_STATES, Store, now
 
 app = typer.Typer(help="Removal workflow: plan from findings, act, verify.", no_args_is_help=True)
@@ -148,8 +149,9 @@ def set_action(action_id: int,
         a = store.action(action_id)
         if contact:
             method = "email" if "@" in contact and "/" not in contact else ("manual" if a["method"] == "email" else a["method"])
-            store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=? WHERE id=?",
-                             (contact, method, action_id))
+            template = a["template"] or (TEMPLATES.get(a["kind"]) if method == "email" else None)
+            store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=?, template=? WHERE id=?",
+                             (contact, method, template, action_id))
             store.db.commit()
             store.set_action_state(action_id, a["state"], f"contact set by owner: {contact}")
             console.print(f"[green]contact set[/]: {contact}")

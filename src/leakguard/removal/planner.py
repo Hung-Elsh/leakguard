@@ -55,6 +55,10 @@ class Plan:
 
 DOMAIN_RE = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
 PROFILE_SITES = {"ghunt": "Google", "gravatar": "Gravatar"}
+COPIES = ("leak", "paste")          # copies of your data on someone else's index: removable even for kept accounts
+# template for an email request, by action kind (used when you set an email contact on a manual action)
+TEMPLATES = {"account_delete": "account_deletion", "leak_removal": "leak_removal", "paste_report": "paste_report",
+             "broker_optout": "data_erasure"}
 
 
 def _norm(name: str, domain: str) -> tuple[str, str]:
@@ -129,6 +133,11 @@ def build(store: Store, catalog: Catalog) -> list[Plan]:
         if verdict == "protect":
             p = plan("protect", kind="protect_checklist", method="checklist", target="protected accounts",
                      title="Secure the protected accounts (password, 2-step verification, recovery)", steps=PROTECT_STEPS)
+            if f["category"] in COPIES:          # you keep the account, but a copy of its data in a leak index or
+                r = _plan_for(f, plan, catalog)  # paste still gets removed
+                if r is not None:
+                    r.finding_ids.append(f["id"])
+                    r.identities.add(f["identity"])
         elif f["severity"] == "info":
             continue                                                    # partial search matches: not an exposure
         else:
@@ -170,9 +179,9 @@ def _plan_for(f: sqlite3.Row, plan, catalog: Catalog) -> Plan | None:
         if p.contact is None and not p.steps:
             _apply_entry(p, e, "account_deletion")
         return p
-    if cat == "leak":                                                   # IntelX records: one request for all
-        p = plan("leakindex:intelx", kind="leak_removal", method="email", target="Intelligence X",
-                 title="Ask Intelligence X to remove the records with your address")
+    if cat == "leak":       # IntelX records: one request per address, sent from that address (they act only for it)
+        p = plan(f"leakindex:intelx:{f['identity']}", kind="leak_removal", method="email", target="Intelligence X",
+                 title=f"Ask Intelligence X to remove the records with {f['identity']}")
         if p.contact is None and not p.steps:
             _apply_entry(p, catalog.entries.get("intelxrecords"), "leak_removal")   # never JDM's account deletion
         return p

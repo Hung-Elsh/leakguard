@@ -63,10 +63,11 @@
     },
     "intelxrecords": {
       "name": "Intelligence X (record removal)",
-      "method": "manual",
+      "method": "email",
       "verified": true,
+      "email": "abuse@intelx.io",
       "url": "https://intelx.io/abuse",
-      "steps": "Not account deletion: Intelligence X's content removal page (https://intelx.io/abuse, found by the owner 2026-11-26). Submit one request listing the record IDs below.",
+      "steps": "Not account deletion: a record removal request to abuse@intelx.io (the address that answers https://intelx.io/abuse requests). Intelligence X removes data only for the address a request comes from (their reply, 2026-11-26), so it is one request per address, sent from that address.",
       "pinned": true
     },
     "envato": {

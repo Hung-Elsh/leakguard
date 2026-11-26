@@ -54,7 +54,8 @@ def test_verdicts_drive_the_plan(lab, store):
     keys = {p.key for p in build(store, Catalog(lab))}
     assert "account:twitch" in keys                      # open -> removal
     assert "account:houzz" not in keys                   # false positive -> nothing
-    assert "protect" in keys and "leakindex:intelx" not in keys   # protect -> checklist, not removal
+    assert "protect" in keys                             # protect -> checklist ...
+    assert "leakindex:intelx:zorblat11" in keys          # ... and a leaked copy of its data is still removed
     assert not any(k.startswith("page:") for k in keys)  # info-only search match -> nothing
     assert "rotate:compilations" in keys                 # credential compilation -> rotate passwords
 
@@ -127,8 +128,47 @@ def test_catalog_name_beats_software_domain_and_jdm_wins(lab, tmp_path):
 def test_leak_index_never_uses_account_deletion(lab, store):
     _save(store, "zorblat11@seclab.test", "intelx", [Finding("intelx", "leak", "IntelX: combo.txt", severity="high",
                                                              locator="ix9")])
-    p = {p.key: p for p in build(store, Catalog(lab))}["leakindex:intelx"]
+    p = {p.key: p for p in build(store, Catalog(lab))}["leakindex:intelx:zorblat11@seclab.test"]
     assert p.kind == "leak_removal" and p.contact == "removal@intelx.seclab.test"   # lab record-removal entry
+
+
+def test_request_comes_from_the_address_it_is_about(lab, store, monkeypatch, tmp_path):
+    """IntelX removed nothing for an address listed in a request sent from another address: one request per
+    address, sent from it; a username-only or multi-address action falls back to the main address."""
+    monkeypatch.setattr(drafts, "DRAFTS", tmp_path / "drafts")
+    store.seed("zorblat.old@seclab.test", "email", "test")
+    for ident, loc in (("zorblat11@seclab.test", "ix1"), ("zorblat.old@seclab.test", "ix2")):
+        _save(store, ident, "intelx", [Finding("intelx", "leak", f"IntelX: {loc}.txt", severity="high", locator=loc)])
+    keys = {p.key for p in build(store, Catalog(lab)) if p.kind == "leak_removal"}
+    assert keys == {"leakindex:intelx:zorblat11@seclab.test", "leakindex:intelx:zorblat.old@seclab.test"}
+    base = {"kind": "leak_removal", "method": "email", "contact": "removal@intelx.seclab.test",
+            "contact_verified": True, "template": "leak_removal", "target": "Intelligence X", "finding_ids": []}
+    old, _ = store.upsert_action(base | {"key": "a", "identities": ["zorblat.old@seclab.test"]})
+    msg, _ = drafts.render(lab, store, old)
+    assert msg["From"] == "zorblat.old@seclab.test" and "zorblat.old@seclab.test" in msg.get_content()
+    both, _ = store.upsert_action(base | {"key": "b", "identities": ["zorblat11", "zorblat.old@seclab.test",
+                                                                     "zorblat11@seclab.test"]})
+    assert drafts.sender_address(lab, store.action(both)) == drafts.sender_address(lab)
+
+
+def test_gmail_refuses_to_send_from_another_account(lab, monkeypatch):
+    import dataclasses
+    from email.message import EmailMessage
+    from leakguard.mail import gmail_backend
+    from leakguard.removal import sender
+
+    class Fake:
+        sent = []
+        def __init__(self, *a): pass
+        def send_as(self): return {"zorblat11@seclab.test"}
+        def send(self, msg): Fake.sent.append(msg); return "id1"
+    monkeypatch.setattr(gmail_backend, "GmailBackend", Fake)
+    s = dataclasses.replace(lab, removal={"sender": "gmail"})
+    msg = EmailMessage()
+    msg["From"] = "zorblat.old@seclab.test"
+    with pytest.raises(drafts.DraftError, match="must come from zorblat.old@seclab.test"):
+        sender.send(s, ScopeGuard(s), msg)
+    assert not Fake.sent
 
 
 def test_owner_confirmed_actions_are_not_rechecked(lab, store):

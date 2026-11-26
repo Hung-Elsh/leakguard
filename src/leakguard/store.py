@@ -116,6 +116,10 @@ class Store:
             for col, typ in columns.items():
                 if col not in have:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        # leak-index removal used to be one action for all addresses; it is now one per address (IntelX acts only
+        # for the address a request comes from), keyed leakindex:intelx:<address>
+        self.db.execute("UPDATE actions SET key = key || ':' || json_extract(identities, '$[0]') "
+                        "WHERE key = 'leakindex:intelx' AND json_array_length(identities) = 1")
         self.db.commit()
 
     # ---- identities -------------------------------------------------------
