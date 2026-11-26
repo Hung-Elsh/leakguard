@@ -87,6 +87,31 @@ def init(
 
 
 @app.command()
+def add(
+    email: Optional[list[str]] = typer.Option(None, "--email", "-e", help="Email(s) you own or owned; repeatable/comma list."),
+    username: Optional[list[str]] = typer.Option(None, "--username", "-u", help="Username(s) you use or used."),
+) -> None:
+    """Declare more of your own identities (e.g. old addresses). Saved privately, claimed at once."""
+    ident = config.read_identity("internet")
+    new_e = [e.lower() for e in _split(email) if e.lower() not in ident["emails"]]
+    new_u = [u.lower().lstrip("@") for u in _split(username) if u.lower().lstrip("@") not in ident["usernames"]]
+    if not new_e and not new_u:
+        console.print("nothing new to add")
+        raise typer.Exit()
+    ident["emails"] += new_e
+    ident["usernames"] += new_u
+    try:
+        config.write_identity(ident)
+    except config.ConfigError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2)
+    s, store = _open("internet")
+    engine.bootstrap(s, store)                 # owner-declared -> claimed (also upgrades a matching candidate)
+    console.print(f"[green]added[/] {len(new_e)} email(s), {len(new_u)} username(s) as claimed. "
+                  "Run [cyan]leakguard scan -p internet[/] to check them.")
+
+
+@app.command()
 def leakcheck(staged: bool = typer.Option(False, help="Check staged changes only (used by the pre-commit hook).")) -> None:
     """Fail if any file git would commit contains your keyword, emails, usernames or found identities."""
     hits, n_terms = leaks.check(staged)
@@ -118,7 +143,8 @@ def _print_summary(summary: engine.RunSummary) -> None:
     for col in ("Source", "Identity", "Result"):
         t.add_column(col)
     for src, ident, status in sorted(summary.runs):
-        style = "green" if status.startswith("ok") else "yellow" if status.startswith("skipped") else "red"
+        style = ("green" if status.startswith("ok") else "yellow" if status.startswith(("skipped", "partial"))
+                 else "red")
         t.add_row(src, ident, f"[{style}]{status}[/]")
     console.print(t)
     console.print(f"new findings: [bold]{summary.new_findings}[/] · gone: [bold]{summary.gone_findings}[/]")
@@ -180,17 +206,148 @@ def reject(ids: list[int], profile: Optional[str] = ProfileOpt) -> None:
 
 @app.command()
 def findings(profile: Optional[str] = ProfileOpt,
-             status: Optional[str] = typer.Option(None, help="new | known | gone")) -> None:
-    """Show findings."""
+             status: Optional[str] = typer.Option(None, help="new | known | gone"),
+             verdict: Optional[str] = typer.Option(None, help="open | protect | accepted | false_positive")) -> None:
+    """Show findings with their ID (use it with `leakguard mark`)."""
     s, store = _open(profile)
     t = Table(title="Findings")
-    for col in ("Status", "Sev", "Category", "Identity", "Source", "Finding"):
+    for col in ("ID", "Status", "Verdict", "Sev", "Category", "Identity", "Source", "Finding"):
         t.add_column(col, overflow="fold")
     sev = {"high": "red", "medium": "yellow", "low": "cyan", "info": "dim"}
     for f in store.findings(status):
-        t.add_row(f["status"], f"[{sev[f['severity']]}]{f['severity']}[/]", f["category"], f["identity"],
-                  f["source"], f["title"] + (f"\n[dim]{f['url']}[/]" if f["url"] else ""))
+        v = f["disposition"] or "open"
+        if verdict and v != verdict:
+            continue
+        t.add_row(f["id"][:8], f["status"], v + (f"\n[dim]{f['note']}[/]" if f["note"] else ""),
+                  f"[{sev[f['severity']]}]{f['severity']}[/]", f["category"], f["identity"], f["source"],
+                  f["title"] + (f"\n[dim]{f['url']}[/]" if f["url"] else ""))
     console.print(t)
+
+
+@app.command()
+def mark(ids: list[str] = typer.Argument(..., help="Finding IDs (first 6+ characters are enough)."),
+         as_: str = typer.Option(..., "--as",
+                                 help="open (clean up) | protect (yours: keep and secure) | accepted | false_positive"),
+         note: str = typer.Option("", help="Why, for the report/dashboard."),
+         profile: Optional[str] = ProfileOpt) -> None:
+    """Record your verdict. 'open' = clean up, 'protect' = your account to keep and secure."""
+    s, store = _open(profile)
+    try:
+        for row in store.mark(ids, as_, note):
+            console.print(f"[green]{as_}[/] {row['id'][:8]} {row['title'][:70]}")
+    except (ValueError, KeyError) as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(2)
+
+
+@app.command("password-check")
+def password_check() -> None:
+    """Check if a password appears in known breaches (HIBP Pwned Passwords, k-anonymity).
+    The password is hashed locally; only the first 5 hex characters of its SHA-1 leave this machine."""
+    import getpass
+    import hashlib
+
+    from .net import Http
+    from .scope import ScopeGuard
+    s = config.load("internet")
+    pw = getpass.getpass("Password to check (not shown, not stored): ")
+    if not pw:
+        raise typer.Exit()
+    digest = hashlib.sha1(pw.encode()).hexdigest().upper()
+    del pw
+    prefix, suffix = digest[:5], digest[5:]
+    guard = ScopeGuard(s)
+    with Http(s, guard).client("pwnedpasswords", {"Add-Padding": "true"}) as c:
+        r = c.get(f"https://api.pwnedpasswords.com/range/{prefix}")
+        r.raise_for_status()
+    count = 0
+    for line in r.text.splitlines():
+        h, _, n = line.partition(":")
+        if h.strip() == suffix:
+            count = int(n)
+            break
+    if count:
+        console.print(f"[red bold]Found in breaches {count:,} times.[/] Treat it as public: change it everywhere it was used.")
+    else:
+        console.print("[green]Not found in Pwned Passwords.[/] (A breach can still hold it if it was never published.)")
+
+
+@app.command()
+def block(
+    profile: Optional[str] = ProfileOpt,
+    apply: bool = typer.Option(False, "--apply", help="Actually move/label mail. Without it: dry run."),
+    filters: bool = typer.Option(False, "--filters", help="Also sync your blocklist to Gmail server-side filters."),
+    folder: str = typer.Option("INBOX", help="Mailbox folder to check."),
+    since: int = typer.Option(90, help="Only mail from the last N days (0 = all)."),
+    limit: int = typer.Option(500, help="At most this many messages."),
+    show: str = typer.Option("blocked", help="Rows to list: blocked | all | none."),
+    owner_copy: bool = typer.Option(False, "--owner-copy",
+                                    help="Lab only: run on the copy of your real mail loaded by `lab-import`."),
+) -> None:
+    """Classify your mail and block unwanted messages (dry run unless --apply)."""
+    from .mail import service
+    s, store = _open(profile)
+    try:
+        res = service.run(s, store, folder, since or None, limit, apply, filters, owner_copy)
+    except config.ConfigError as e:
+        console.print(f"[red]config error:[/] {e}")
+        raise typer.Exit(2)
+    colors = {"keep": "green", "label": "cyan", "archive": "blue", "spam": "yellow", "trash": "red"}
+    if show != "none":
+        t = Table(title=f"{folder}: {res.total} message(s) checked")
+        for col in ("Action", "Rule", "From", "Subject", "Why"):
+            t.add_column(col, overflow="fold")
+        for m, v in sorted(res.rows, key=lambda r: list(colors).index(r[1].action), reverse=True):
+            if show == "all" or v.action != "keep":
+                t.add_row(f"[{colors[v.action]}]{v.action}[/]", v.rule, m.from_addr, m.subject[:60],
+                          "; ".join(v.reasons))
+        console.print(t)
+    console.print("  ".join(f"[{colors[a]}]{a}[/]: {n}" for a, n in sorted(res.counts().items())))
+    if apply:
+        console.print(f"[bold green]applied[/]: " + ", ".join(f"{a} {n}" for a, n in res.applied.items() if a != "keep"))
+    else:
+        console.print("[bold]dry run[/]: nothing changed. Re-run with [cyan]--apply[/] to move these messages.")
+    for line in res.filter_plan:
+        console.print(f"  filter: {line}" + ("" if apply else " [dim](dry run)[/]"))
+    if res.gmail:
+        g = res.gmail
+        console.print(f"\n[bold]Compared with Gmail's own Spam label[/] (from Takeout): "
+                      f"both blocked {len(g['both'])} · [yellow]only LeakGuard blocks {len(g['leakguard_only'])}[/] "
+                      f"· [cyan]only Gmail blocked {len(g['gmail_only'])}[/]")
+        for title, key in (("Only LeakGuard blocks (check these are really unwanted)", "leakguard_only"),
+                           ("Gmail spam that LeakGuard keeps (rule ideas)", "gmail_only")):
+            if g[key]:
+                console.print(f"[bold]{title}:[/]")
+                for m in g[key][:25]:
+                    console.print(f"  {m.from_addr}  {m.subject[:70]}")
+
+
+@app.command("lab-import")
+def lab_import(
+    mbox: str = typer.Argument(..., help="Google Takeout .mbox file (keep it under ~/.local/share/leakguard/takeout)."),
+    labels: Optional[list[str]] = typer.Option(None, "--label", "-l",
+                                               help="Only messages with these Gmail labels, e.g. -l Inbox -l Spam."),
+    since: int = typer.Option(365, help="Only mail from the last N days (0 = all)."),
+    limit: int = typer.Option(2000, help="At most this many (newest) messages."),
+    reset: bool = typer.Option(True, help="Empty the lab owner-copy mailbox first."),
+) -> None:
+    """Lab only: load a copy of your real mail into the GreenMail owner-copy mailbox. Gmail is not contacted."""
+    from pathlib import Path
+
+    from .mail.importer import import_mbox
+    s, _ = _open("lab")
+    path = Path(mbox).expanduser()
+    if not path.is_file():
+        console.print(f"[red]not a file:[/] {path}")
+        raise typer.Exit(2)
+    try:
+        r = import_mbox(s, path, {x.lower() for x in _split(labels)}, since or None, limit, reset)
+    except config.ConfigError as e:
+        console.print(f"[red]config error:[/] {e}")
+        raise typer.Exit(2)
+    console.print(f"read {r.read} · [green]imported {r.imported}[/] · skipped: label {r.skipped_label}, "
+                  f"older {r.skipped_old}, unreadable {r.skipped_bad}")
+    console.print(f"Next: [cyan]leakguard block -p lab --owner-copy --since 0 --limit {max(r.imported, 1)}[/] (dry run)")
 
 
 @app.command("report")

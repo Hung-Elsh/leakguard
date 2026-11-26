@@ -20,7 +20,7 @@ def _md_escape(s: str) -> str:
 
 def build(settings: Settings, store: Store) -> dict:
     findings = [dict(r) for r in store.findings()]
-    open_ = [f for f in findings if f["status"] != "gone"]
+    open_ = [f for f in findings if f["status"] != "gone" and (f["disposition"] or "open") == "open"]
     last = store.last_scan_id()
     return {
         "profile": settings.profile,
@@ -28,13 +28,19 @@ def build(settings: Settings, store: Store) -> dict:
         "generated": datetime.now().isoformat(timespec="seconds"),
         "identities": [vars(i) for i in store.identities()],
         "summary": {
-            "open": len(open_),
+            "open": sum(f["severity"] != "info" for f in open_),
+            "open_info": sum(f["severity"] == "info" for f in open_),
             "new": sum(f["status"] == "new" for f in findings),
-            "gone": sum(f["status"] == "gone" for f in findings),
+            "gone": sum(f["status"] == "gone" and (f["disposition"] or "open") == "open" for f in findings),
+            "protect": sum(f["disposition"] == "protect" and f["status"] != "gone" for f in findings),
+            "accepted": sum(f["disposition"] == "accepted" for f in findings),
+            "false_positive": sum(f["disposition"] == "false_positive" for f in findings),
             "by_category": dict(Counter(f["category"] for f in open_)),
             "by_severity": dict(Counter(f["severity"] for f in open_)),
         },
-        "findings": sorted(findings, key=lambda f: (f["status"] == "gone", SEV_ORDER[f["severity"]], f["category"])),
+        "findings": sorted(findings, key=lambda f: (["open", "protect", "accepted", "false_positive"].index(
+                                                        f["disposition"] or "open"), f["status"] == "gone",
+                                                    SEV_ORDER[f["severity"]], f["category"])),
         "last_scan_runs": [dict(r) for r in store.runs(last)] if last else [],
     }
 
@@ -45,7 +51,9 @@ def to_markdown(rep: dict) -> str:
         f"# LeakGuard report: `{rep['keyword']}` ({rep['profile']} profile)",
         f"Generated {rep['generated']}",
         "",
-        f"**Open exposures:** {s['open']} · **new (first seen this round):** {s['new']} · **gone (removed):** {s['gone']}",
+        f"**Open exposures to clean up:** {s['open']} (+{s['open_info']} info-only, e.g. partial search matches)"
+        f" · **new (first seen this round):** {s['new']} · **gone (removed):** {s['gone']}"
+        f" · **to protect:** {s['protect']} · accepted: {s['accepted']} · false positives: {s['false_positive']}",
         "",
         "| Severity | Count |", "|---|---|",
         *[f"| {k} | {v} |" for k, v in sorted(s["by_severity"].items(), key=lambda kv: SEV_ORDER[kv[0]])],
@@ -62,16 +70,26 @@ def to_markdown(rep: dict) -> str:
     if pending:
         lines += ["", f"**{len(pending)} candidate(s) wait for your decision:** "
                   "`leakguard claim <id>` if it is yours, `leakguard reject <id>` if not."]
+    protect = [f for f in rep["findings"] if f["disposition"] == "protect" and f["status"] != "gone"]
+    if protect:
+        lines += ["", "## Accounts to protect (keep and secure: change password, enable 2-step verification)",
+                  "| ID | Sev | Identity | Source | Finding | Note |", "|---|---|---|---|---|---|",
+                  *[f"| `{f['id'][:8]}` | {f['severity']} | `{f['identity']}` | {f['source']} | {_md_escape(f['title'])} "
+                    f"| {_md_escape(f['note'])} |" for f in protect]]
     lines += ["", "## Findings",
-              "| Status | Sev | Category | Identity | Source | Finding | Evidence |", "|---|---|---|---|---|---|---|"]
+              "| ID | Status | Verdict | Sev | Category | Identity | Source | Finding | Evidence |",
+              "|---|---|---|---|---|---|---|---|---|"]
     for f in rep["findings"]:
         title = f"[{_md_escape(f['title'])}]({f['url']})" if f["url"] else _md_escape(f["title"])
-        lines.append(f"| {f['status']} | {f['severity']} | {f['category']} | `{f['identity']}` | {f['source']} "
-                     f"| {title} | {_md_escape(f['evidence'])[:160]} |")
-    problems = [r for r in rep["last_scan_runs"] if not r["ok"]]
+        verdict = (f["disposition"] or "open") + (f": {_md_escape(f['note'])}" if f["note"] else "")
+        lines.append(f"| `{f['id'][:8]}` | {f['status']} | {verdict} | {f['severity']} | {f['category']} | `{f['identity']}` "
+                     f"| {f['source']} | {title} | {_md_escape(f['evidence'])[:160]} |")
+    problems = [r for r in rep["last_scan_runs"] if r["status"] != "ok"]
     if problems:
-        lines += ["", "## Sources that did not run (last scan)", "| Source | Identity | Reason |", "|---|---|---|",
-                  *[f"| {r['source']} | `{r['identity']}` | {_md_escape(r['error'])} |" for r in problems]]
+        lines += ["", "## Sources that did not run fully (last scan)",
+                  "| Source | Identity | Status | HTTP | Error |", "|---|---|---|---|---|",
+                  *[f"| {r['source']} | `{r['identity']}` | {r['status'] or 'error'} | {r['http_status'] or ''} "
+                    f"| {_md_escape(r['error'])} |" for r in problems]]
     return "\n".join(lines) + "\n"
 
 

@@ -181,6 +181,22 @@ class Store:
         self.db.commit()
         return new, cur.rowcount
 
+    def mark(self, id_prefixes: list[str], disposition: str, note: str = "") -> list[sqlite3.Row]:
+        """Set the owner's verdict on findings (ids or unique prefixes of 6+ chars)."""
+        if disposition not in DISPOSITIONS:
+            raise ValueError(f"disposition must be one of {DISPOSITIONS}")
+        done = []
+        for pre in id_prefixes:
+            if len(pre) < 6:
+                raise ValueError(f"id prefix too short: {pre!r} (use 6+ characters)")
+            rows = list(self.db.execute("SELECT id, title FROM findings WHERE id LIKE ?", (pre + "%",)))
+            if len(rows) != 1:
+                raise KeyError(f"{pre!r} matches {len(rows)} findings")
+            self.db.execute("UPDATE findings SET disposition=?, note=? WHERE id=?", (disposition, note, rows[0]["id"]))
+            done.append(rows[0])
+        self.db.commit()
+        return done
+
     def findings(self, status: str | None = None) -> list[sqlite3.Row]:
         q = ("SELECT f.*, i.value AS identity FROM findings f JOIN identities i ON i.id=f.identity_id")
         args: tuple = ()
