@@ -130,7 +130,10 @@ class GHunt(ToolPlugin):
 
     def produce(self, ctx, value, kind, tmp):
         out = tmp / "ghunt.json"
-        return expect_output("ghunt", run([find_binary("ghunt"), "email", value, "--json", str(out)], tmp, self.timeout), out)
+        proc = run([find_binary("ghunt"), "email", value, "--json", str(out)], tmp, self.timeout)
+        if not out.exists() and "wasn't found" in (proc.stdout + proc.stderr):
+            return None                      # no Google account for this address: a valid answer, not an error
+        return expect_output("ghunt", proc, out)
 
     def parse(self, ctx, text, value, kind):
         res = PluginResult()

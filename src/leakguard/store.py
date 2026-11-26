@@ -78,6 +78,8 @@ FINDING_COLUMNS = {"disposition": "TEXT DEFAULT 'open'", "note": "TEXT"}
 # accepted       known, not a threat, no action
 # false_positive not the owner / the source was wrong
 DISPOSITIONS = ("open", "protect", "accepted", "false_positive")
+# Breach records never disappear: a run that does not return them (a flaky lookup service) must not mark them gone.
+PERMANENT_CATEGORIES = ("breach",)
 
 
 # Removal action life cycle. "done" closes manual steps and checklists; "verified" needs a re-check
@@ -218,10 +220,11 @@ class Store:
         if not mark_gone:              # partial run: a site that did not answer is not proof of removal
             self.db.commit()
             return new, 0
-        q = "UPDATE findings SET status='gone', last_scan=? WHERE identity_id=? AND source=? AND status!='gone'"
+        q = ("UPDATE findings SET status='gone', last_scan=? WHERE identity_id=? AND source=? AND status!='gone' "
+             f"AND category NOT IN ({','.join('?' * len(PERMANENT_CATEGORIES))})")
         if seen:  # note: "NOT IN (NULL)" would match nothing, so the clause is only added when needed
             q += f" AND id NOT IN ({','.join('?' * len(seen))})"
-        cur = self.db.execute(q, (scan_id, ident.id, source, *seen))
+        cur = self.db.execute(q, (scan_id, ident.id, source, *PERMANENT_CATEGORIES, *seen))
         self.db.commit()
         return new, cur.rowcount
 
