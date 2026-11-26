@@ -125,6 +125,18 @@ class Store:
         )
         self.db.commit()
 
+    def add_identity(self, value: str, kind: str, status: str, origin: str, proof: str = "") -> Identity:
+        """Owner decision on a value that may not exist yet (claim/reject by value)."""
+        if status not in ("claimed", "rejected", "candidate"):
+            raise ValueError(status)
+        self.db.execute(
+            "INSERT INTO identities(value, kind, status, origin, proof, created, decided) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(value, kind) DO UPDATE SET status=excluded.status, proof=excluded.proof, decided=excluded.decided",
+            (value.lower(), kind, status, origin, proof, now(), now()))
+        self.db.commit()
+        row = self.db.execute("SELECT * FROM identities WHERE value=? AND kind=?", (value.lower(), kind)).fetchone()
+        return self._identity(row)
+
     def add_candidate(self, c: Candidate) -> bool:
         """Insert a candidate; returns True if it is new. Never changes an existing decision."""
         cur = self.db.execute(

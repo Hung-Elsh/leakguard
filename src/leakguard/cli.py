@@ -88,32 +88,7 @@ def init(
     console.print(f"[green]saved[/] {path} (mode 600)")
     console.print(f"  keyword: {mask(saved['keyword'])} · emails: {len(saved['emails'])} · usernames: {len(saved['usernames'])}")
     console.print("Next: [cyan]leakguard install-hook[/] (blocks commits containing these), then "
-                  "[cyan]leakguard expand -p internet[/]")
-
-
-@app.command()
-def add(
-    email: Optional[list[str]] = typer.Option(None, "--email", "-e", help="Email(s) you own or owned; repeatable/comma list."),
-    username: Optional[list[str]] = typer.Option(None, "--username", "-u", help="Username(s) you use or used."),
-) -> None:
-    """Declare more of your own identities (e.g. old addresses). Saved privately, claimed at once."""
-    ident = config.read_identity("internet")
-    new_e = [e.lower() for e in _split(email) if e.lower() not in ident["emails"]]
-    new_u = [u.lower().lstrip("@") for u in _split(username) if u.lower().lstrip("@") not in ident["usernames"]]
-    if not new_e and not new_u:
-        console.print("nothing new to add")
-        raise typer.Exit()
-    ident["emails"] += new_e
-    ident["usernames"] += new_u
-    try:
-        config.write_identity(ident)
-    except config.ConfigError as e:
-        console.print(f"[red]{e}[/]")
-        raise typer.Exit(2)
-    s, store = _open("internet")
-    engine.bootstrap(s, store)                 # owner-declared -> claimed (also upgrades a matching candidate)
-    console.print(f"[green]added[/] {len(new_e)} email(s), {len(new_u)} username(s) as claimed. "
-                  "Run [cyan]leakguard scan -p internet[/] to check them.")
+                  "[cyan]leakguard scan -p internet[/]")
 
 
 @app.command()
@@ -190,23 +165,36 @@ def identities(profile: Optional[str] = ProfileOpt,
     console.print(t)
 
 
+def _decide(tokens: list[str], status: str, profile: Optional[str], proof: str) -> None:
+    from .identities import decide
+    s, store = _open(profile)
+    engine.bootstrap(s, store)
+    for t in _split(tokens):
+        try:
+            d = decide(s, store, t, status, proof)
+        except (config.ConfigError, KeyError, ValueError) as e:
+            console.print(f"[red]{t}: {e}[/]")
+            continue
+        verb, color = ("claimed", "green") if status == "claimed" else ("rejected", "dim")
+        console.print(f"[{color}]{verb}[/] {d.identity.value} ({d.identity.kind})" + (" [cyan]new[/]" if d.created else ""))
+
+
 @app.command()
-def claim(ids: list[int], profile: Optional[str] = ProfileOpt,
+def claim(identities_: list[str] = typer.Argument(..., metavar="ID|VALUE...",
+                                                  help="Identity IDs, or emails/usernames (new ones are added)."),
+          profile: Optional[str] = ProfileOpt,
           proof: str = typer.Option("owner-attested", help="How you know it is yours.")) -> None:
-    """Confirm that candidate identities are yours. Only claimed identities are scanned or cleaned."""
-    s, store = _open(profile)
-    for i in ids:
-        ident = store.decide(i, "claimed", proof)
-        console.print(f"[green]claimed[/] {ident.value} ({ident.kind})")
+    """Confirm identities are yours, by ID or value; a value not listed yet is added as yours.
+    Only claimed identities are scanned or cleaned."""
+    _decide(identities_, "claimed", profile, proof)
 
 
 @app.command()
-def reject(ids: list[int], profile: Optional[str] = ProfileOpt) -> None:
-    """Mark candidates as not yours. They are never scanned and not proposed again."""
-    s, store = _open(profile)
-    for i in ids:
-        ident = store.decide(i, "rejected")
-        console.print(f"[dim]rejected[/] {ident.value}")
+def reject(identities_: list[str] = typer.Argument(..., metavar="ID|VALUE...",
+                                                   help="Identity IDs, or emails/usernames (new ones are added as rejected)."),
+           profile: Optional[str] = ProfileOpt) -> None:
+    """Mark identities as not yours, by ID or value. They are never scanned or proposed again."""
+    _decide(identities_, "rejected", profile, "")
 
 
 @app.command()
