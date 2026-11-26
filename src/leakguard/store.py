@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS actions (
   history TEXT,                  -- JSON list of {ts, state, note}
   created TEXT, updated TEXT, next_check TEXT
 );
+CREATE TABLE IF NOT EXISTS snapshots (
+  id INTEGER PRIMARY KEY, ts TEXT NOT NULL, kind TEXT,     -- kind: monitor | report
+  data TEXT NOT NULL                                       -- JSON: counts at that moment (for trends)
+);
 CREATE TABLE IF NOT EXISTS mail_log (
   ts TEXT, profile TEXT, message_id TEXT, sender TEXT, subject TEXT,
   rule TEXT, action TEXT, applied INTEGER
@@ -323,6 +327,25 @@ class Store:
         q = ("SELECT f.*, i.value AS identity, i.kind AS identity_kind FROM findings f "
              f"JOIN identities i ON i.id=f.identity_id WHERE f.id IN ({','.join('?' * len(ids))})")
         return list(self.db.execute(q, ids))
+
+    # ---- snapshots / statistics -------------------------------------------------------
+    def add_snapshot(self, kind: str, data: dict) -> None:
+        self.db.execute("INSERT INTO snapshots(ts, kind, data) VALUES(?,?,?)", (now(), kind, json.dumps(data)))
+        self.db.commit()
+
+    def snapshots(self) -> list[dict]:
+        return [{"ts": r["ts"], "kind": r["kind"], **json.loads(r["data"])}
+                for r in self.db.execute("SELECT * FROM snapshots ORDER BY id")]
+
+    def finding_states(self) -> dict[str, str]:
+        return {r["id"]: r["status"] for r in self.db.execute("SELECT id, status FROM findings")}
+
+    def mail_stats(self, since: str | None = None) -> dict[str, int]:
+        """Applied mail actions (moved messages) per action, optionally since a timestamp."""
+        q, args = "SELECT action, count(*) AS n FROM mail_log WHERE applied=1", ()
+        if since:
+            q, args = q + " AND ts >= ?", (since,)
+        return {r["action"]: r["n"] for r in self.db.execute(q + " GROUP BY action", args)}
 
     def log_mail(self, profile: str, rows: list[tuple[str, str, str, str, str]], applied: bool) -> None:
         """Record classified messages (only non-keep verdicts) for the scorecard."""
