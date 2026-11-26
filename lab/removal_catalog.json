@@ -1,0 +1,51 @@
+{
+  "_comment": "Lab overrides of config/removal_catalog.json: every contact is a fake address delivered to Mailpit (never leaves the lab) or a page of the mock OSINT service.",
+  "sites": {
+    "labbroker": {
+      "name": "PeopleFinder (lab mock)",
+      "domains": [],
+      "method": "form",
+      "verified": true,
+      "url": "http://127.0.0.1:5055/broker/optout",
+      "form": {
+        "fields": {
+          "input[name=email]": "{email}",
+          "input[name=record_url]": "{url}"
+        },
+        "submit": "button[type=submit]",
+        "success_text": "scheduled for removal"
+      }
+    },
+    "pastebin": {
+      "name": "Pastebin (lab)",
+      "method": "email",
+      "verified": true,
+      "email": "abuse@paste.seclab.test"
+    },
+    "spotify": {
+      "name": "Spotify (lab)",
+      "method": "email",
+      "verified": true,
+      "email": "privacy@spotify.seclab.test"
+    },
+    "labshop": {
+      "name": "LabShop (lab)",
+      "method": "email",
+      "verified": true,
+      "email": "dpo@labshop.seclab.test"
+    },
+    "discord": {
+      "name": "Discord (lab)",
+      "method": "manual",
+      "verified": true,
+      "url": "http://127.0.0.1:5055/",
+      "steps": "Lab stand-in: log in, User Settings, Delete Account."
+    },
+    "intelxrecords": {
+      "name": "Intelligence X (lab)",
+      "method": "email",
+      "verified": true,
+      "email": "removal@intelx.seclab.test"
+    }
+  }
+}

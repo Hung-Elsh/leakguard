@@ -23,3 +23,7 @@ keys: {}
 # The owner's Gmail through the official API (OAuth token in ~/.config/leakguard/gmail_token.json)
 mail:
   backend: gmail
+
+# Removal workflow: requests are sent from the owner's Gmail (API, gmail.send scope) after --confirm
+removal:
+  sender: gmail

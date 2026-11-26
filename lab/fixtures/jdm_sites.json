@@ -1,0 +1,8 @@
+[
+  {"name": "GitHub", "url": "https://github.com/settings/admin", "difficulty": "easy", "domains": ["github.com"],
+   "notes": "Settings, Account, Delete your account."},
+  {"name": "Reddit", "url": "https://www.reddit.com/settings/account", "difficulty": "easy", "domains": ["reddit.com"],
+   "notes": "Settings, Account, Delete account."},
+  {"name": "OldGame", "difficulty": "hard", "domains": ["oldgame.seclab.test"], "email": "support@oldgame.seclab.test",
+   "email_subject": "Account deletion request", "notes": "Lab sample of an email-only deletion."}
+]

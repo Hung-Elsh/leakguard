@@ -1,0 +1,86 @@
+{
+  "_comment": "How to remove the owner from a site or index. Only entries checked by hand are here (verified: true); everything else falls back to the JustDeleteMe dataset (`leakguard remove catalog-update`) or to 'find the privacy contact'. method: email (request drafted from a template) | form (Playwright fills it, submit needs --confirm) | manual (steps + link, the owner does it). Keys are site names lower-cased with non-alphanumerics removed.",
+  "sites": {
+    "twitch": {
+      "name": "Twitch",
+      "domains": [
+        "twitch.tv"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://www.twitch.tv/user/delete-account",
+      "steps": "Log in to the account, open the link, confirm. (Disabling first gives a grace period; deletion is final.)"
+    },
+    "instagram": {
+      "name": "Instagram",
+      "domains": [
+        "instagram.com"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://www.instagram.com/accounts/remove/request/permanent/",
+      "steps": "Log in, open the link, choose a reason, re-enter the password, confirm. Deletion completes after Instagram's waiting period."
+    },
+    "adobe": {
+      "name": "Adobe",
+      "domains": [
+        "adobe.com"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://account.adobe.com/privacy",
+      "steps": "Log in, Privacy and personal data, Delete Adobe account. Cancel paid plans first."
+    },
+    "hibp": {
+      "name": "Have I Been Pwned",
+      "domains": [
+        "haveibeenpwned.com"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://haveibeenpwned.com/OptOut",
+      "steps": "Enter the address, open the verification mail HIBP sends, confirm. Hides the address from public searches (the breaches themselves stay)."
+    },
+    "keysopenpgporg": {
+      "name": "keys.openpgp.org",
+      "domains": [
+        "keys.openpgp.org"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://keys.openpgp.org/manage",
+      "steps": "Enter the address, follow the link mailed to it, unpublish the identity."
+    },
+    "pastebin": {
+      "name": "Pastebin",
+      "domains": [
+        "pastebin.com"
+      ],
+      "method": "manual",
+      "verified": true,
+      "url": "https://pastebin.com/",
+      "steps": "Open each paste listed below and use its 'report abuse' link (personal data / credentials)."
+    },
+    "intelxrecords": {
+      "name": "Intelligence X (record removal)",
+      "method": "manual",
+      "verified": true,
+      "url": "https://intelx.io/abuse",
+      "steps": "Not account deletion: Intelligence X's content removal page (https://intelx.io/abuse, found by the owner 2026-11-26). Submit one request listing the record IDs below.",
+      "pinned": true
+    },
+    "envato": {
+      "name": "Envato",
+      "domains": [
+        "envato.com",
+        "forums.envato.com",
+        "themeforest.net",
+        "codecanyon.net"
+      ],
+      "method": "email",
+      "verified": false,
+      "pinned": true,
+      "steps": "Envato closes accounts only on request to its Customer Success team (no self-service). Send the request from the address registered with the Envato account (otherwise Envato asks extra ownership questions), include the username, and say it is also a personal-data deletion request (GDPR / applicable privacy law). The team's address is not in this catalog: take it from Envato's help centre 'contact' page and set it with `leakguard remove contact`."
+    }
+  }
+}

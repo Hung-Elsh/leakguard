@@ -32,6 +32,19 @@
       "removal": "n/a"
     },
     {
+      "id": "justdeleteme",
+      "type": "api",
+      "allowed": true,
+      "hosts": [
+        "raw.githubusercontent.com"
+      ],
+      "rate_per_min": 10,
+      "needs": [],
+      "kinds": [],
+      "tos": "JustDeleteMe open dataset (jdm-contrib/jdm on GitHub): delete-account links; downloaded by `leakguard remove catalog-update`.",
+      "removal": "n/a"
+    },
+    {
       "id": "intelx",
       "type": "api",
       "allowed": true,
