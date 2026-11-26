@@ -175,3 +175,11 @@ def scan(settings: Settings, store: Store, only: list[str] | None = None, worker
     bootstrap(settings, store)
     idents = [i for i in store.identities("claimed") if i.kind != "keyword"]
     return _execute(settings, store, "scan", idents, only, workers)
+
+
+def rescan(settings: Settings, store: Store, sources: list[str], identity_values: set[str],
+           workers: int = 4) -> RunSummary:
+    """Re-run only these sources for only these (claimed) identities, e.g. to verify a removal."""
+    bootstrap(settings, store)
+    idents = [i for i in store.identities("claimed") if i.value in identity_values]
+    return _execute(settings, store, "recheck", idents, sources, workers)
