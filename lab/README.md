@@ -33,3 +33,27 @@ rm -f data/lab.sqlite
 .venv/bin/leakguard scan -p lab          # finds the backup email as a new candidate
 .venv/bin/leakguard report -p lab
 ```
+
+## Mail blocking (GreenMail on 192.168.1.250)
+`mail_corpus.py` holds 22 messages for the fictional owner, each with its expected verdict: 10 legit
+(including look-alikes such as a real "Google" security alert and a security-code mail), 8 spam
+(sextortion, phishing, failed DMARC, scams, mass BCC), 2 on the owner blocklist and 2 sign-up newsletters
+first seen after the leak. The owner lists are in `mail_rules.yaml`.
+
+```bash
+.venv/bin/python lab/seed_mail.py --reset   # empty the lab mailbox, send the corpus
+.venv/bin/leakguard block -p lab            # dry run: shows the verdicts, changes nothing
+.venv/bin/leakguard block -p lab --apply    # moves: Junk 8, Trash 2, LeakGuard.Review 2, INBOX keeps 10
+```
+`tests/test_classifier.py` checks the same corpus offline.
+
+## Your real mail, copied into the lab (`--owner-copy`)
+Tests the rules on a copy of your own mail without touching Gmail. The copy goes into the separate GreenMail
+mailbox `owner-copy@seclab.test` over TLS. It uses your private identity and `~/.config/leakguard/mail_rules.yaml`.
+1. Export your mail at takeout.google.com: "Deselect all", tick **Mail**, format mbox, then download the zip.
+2. Extract the mbox into your private data folder, then delete the zip:
+   `mkdir -p ~/.local/share/leakguard/takeout && unzip -j ~/Downloads/takeout-*.zip '*.mbox' -d ~/.local/share/leakguard/takeout/`
+3. `leakguard lab-import ~/.local/share/leakguard/takeout/<file>.mbox` (newest 2000 from the last year by default)
+4. `leakguard block -p lab --owner-copy --since 0 --limit 2000`: a dry run, plus a comparison with Gmail's own Spam label.
+   `--apply` moves messages in the lab copy only.
+GreenMail keeps mail in memory, so restarting the container wipes the copy.

@@ -40,7 +40,7 @@ class ScopeGuard:
         self.networks = [ipaddress.ip_network(n) for n in settings.allowed_networks]
         self.hosts_by_source: dict[str, list[str]] = {}
         for sid, src in settings.sources.items():
-            if src.get("allowed") and src.get("type") == "api":
+            if src.get("allowed") and src.get("type") in ("api", "mail"):
                 self.hosts_by_source[sid] = list(src.get("hosts", []))
         # broker search pages are allowed per broker entry in the profile
         broker_hosts = [urlsplit(b["search_url"]).hostname for b in settings.brokers if b.get("search_url")]
@@ -61,6 +61,10 @@ class ScopeGuard:
             raise ScopeError(f"[internet] source {source!r} is not allowed in sources.json")
         if not any(_host_matches(host, h) for h in self.hosts_by_source.get(source, [])):
             raise ScopeError(f"[internet] {host} is not a listed host of source {source!r}")
+
+    def check_host(self, host: str, source: str) -> None:
+        """Same rules as check_url, for non-HTTP connections (IMAP, SMTP, Gmail client)."""
+        self.check_url(f"https://{host}/", source)
 
     def check_tool(self, tool: str) -> None:
         """External tools may run only in the internet profile, and only if allowed."""

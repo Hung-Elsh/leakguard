@@ -1,0 +1,9 @@
+# Lab owner lists for the fictional identity. The real owner's lists live in
+# ~/.config/leakguard/mail_rules.yaml (created by `leakguard block` on first run).
+leak_date: 2023-01-01          # senders who wrote before this date count as known correspondents
+allow:
+  addresses: [mom@family.seclab.test]
+  domains: [bank.seclab.test]
+block:
+  addresses: [deals@spammy-shop.test]
+  domains: [casino-bonus.test]

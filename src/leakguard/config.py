@@ -92,6 +92,7 @@ class Settings:
     fixtures_dir: Path | None
     allowed_networks: list[str]          # lab only
     sources: dict[str, dict]
+    mail: dict = field(default_factory=dict)
     keys: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -138,5 +139,6 @@ def load(profile: str | None = None) -> Settings:
         fixtures_dir=(ROOT / fixtures) if fixtures else None,
         allowed_networks=prof.get("allowed_networks") or [],
         sources=sources,
+        mail=prof.get("mail") or {},
         keys=prof.get("keys") or {},
     )

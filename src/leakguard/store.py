@@ -148,6 +148,13 @@ class Store:
             "SELECT r.*, i.value AS identity FROM source_runs r JOIN identities i ON i.id=r.identity_id WHERE scan_id=?",
             (scan_id,)))
 
+    def log_mail(self, profile: str, rows: list[tuple[str, str, str, str, str]], applied: bool) -> None:
+        """Record classified messages (only non-keep verdicts) for the scorecard."""
+        ts = now()
+        self.db.executemany("INSERT INTO mail_log VALUES(?,?,?,?,?,?,?,?)",
+                            [(ts, profile, *r, int(applied)) for r in rows])
+        self.db.commit()
+
     def last_scan_id(self) -> int | None:
         row = self.db.execute("SELECT max(id) AS id FROM scans").fetchone()
         return row["id"]

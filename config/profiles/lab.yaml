@@ -28,3 +28,19 @@ keys:
   INTELX_API_KEY: lab
   GOOGLE_PSE_API_KEY: lab
   GOOGLE_PSE_CX: lab
+  BRAVE_API_KEY: lab
+
+# Lab mailbox: GreenMail on the Windows target (fake accounts, any password, never delivers outside)
+mail:
+  backend: imap
+  host: 192.168.1.250
+  port: 143
+  ssl: false
+  user_env: LAB_IMAP_USER
+  user: zorblat11@seclab.test
+  password_env: LAB_IMAP_PASSWORD
+  password: lab
+  seed_smtp: {host: 192.168.1.250, port: 587}
+  # Separate lab mailbox for a copy of the owner's real mail (Google Takeout .mbox via `leakguard lab-import`).
+  # TLS, because it carries real mail over the LAN. Used by `leakguard block -p lab --owner-copy`.
+  owner_copy: {user: owner-copy@seclab.test, password: lab, port: 993, ssl: true, insecure_tls: true}

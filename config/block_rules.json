@@ -1,0 +1,212 @@
+{
+  "_comment": "Generic mail rules, checked in order; the first match wins. The owner's allowlist always wins over every rule. Owner-specific lists (allow/block senders, leak date) live in ~/.config/leakguard/mail_rules.yaml, never here. Actions are reversible: label (review folder), archive, spam (Junk), trash.",
+  "rules": [
+    {
+      "id": "owner-blocklist",
+      "action": "trash",
+      "description": "Sender is on the owner's blocklist",
+      "all": [
+        {
+          "type": "sender_in",
+          "list": "block"
+        }
+      ]
+    },
+    {
+      "id": "sextortion",
+      "action": "spam",
+      "description": "Extortion: a threat (leaked password / hacked / recorded) together with a payment demand",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_authenticated_list"
+        },
+        {
+          "type": "regex",
+          "field": "subject+body",
+          "pattern": "(?i)(i know (your|ur) password|your password is|i (have )?(hacked|infected) your (device|computer|account)|i recorded you|recorded (you|a video)|your webcam)"
+        },
+        {
+          "type": "regex",
+          "field": "subject+body",
+          "pattern": "(?i)(bitcoin|\\bbtc\\b|crypto ?wallet|wallet address|pay(ment)? .{0,30}(usd|\\$|€|dollars))"
+        }
+      ]
+    },
+    {
+      "id": "phishing-brand-spoof",
+      "action": "spam",
+      "description": "Display name claims a brand that the sender domain does not belong to",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "brand_spoof",
+          "brands": [
+            "paypal",
+            "apple",
+            "icloud",
+            "microsoft",
+            "outlook",
+            "office365",
+            "google",
+            "gmail",
+            "amazon",
+            "netflix",
+            "facebook",
+            "instagram",
+            "whatsapp",
+            "dhl",
+            "fedex",
+            "binance",
+            "coinbase",
+            "metamask",
+            "bank"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phishing-reply-to",
+      "action": "spam",
+      "description": "Account/security lure whose replies go to a different domain",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "reply_to_mismatch"
+        },
+        {
+          "type": "regex",
+          "field": "subject+body",
+          "pattern": "(?i)(verify|suspend|locked|unusual (sign-?in|activity)|security alert|confirm your|update your (payment|account)|password (expire|reset))"
+        }
+      ]
+    },
+    {
+      "id": "auth-fail",
+      "action": "spam",
+      "description": "Receiving server reports SPF or DMARC failure",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "auth_fail",
+          "checks": [
+            "dmarc",
+            "spf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scam-subject",
+      "action": "spam",
+      "description": "Lottery / quick-money scam words in the subject",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_authenticated_list"
+        },
+        {
+          "type": "regex",
+          "field": "subject",
+          "pattern": "(?i)(\\byou (have )?won(?!['’]t)\\b|\\bwinner\\b|lottery|inheritance|beneficiary|claim your (prize|reward|funds)|crypto (giveaway|airdrop)|free spins|no deposit)"
+        }
+      ]
+    },
+    {
+      "id": "scam-body",
+      "action": "spam",
+      "description": "Strong scam phrases in the body (inheritance, beneficiary, unclaimed millions)",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_authenticated_list"
+        },
+        {
+          "type": "regex",
+          "field": "body",
+          "pattern": "(?i)(you are the (sole )?beneficiary|inheritance (fund|claim)|unclaimed (funds|inheritance)|\\b\\d+(\\.\\d+)? million (usd|dollars|euros)\\b)"
+        }
+      ]
+    },
+    {
+      "id": "storage-scam",
+      "action": "spam",
+      "description": "Fake storage / account warnings ('your photos will be deleted')",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_authenticated_list"
+        },
+        {
+          "type": "regex",
+          "field": "subject",
+          "pattern": "(?i)((photos|files|videos|storage|cloud).{0,30}(deleted|removed|full|suspended|blocked)|account (has been )?(blocked|suspended))"
+        }
+      ]
+    },
+    {
+      "id": "random-domain",
+      "action": "spam",
+      "description": "Unknown sender on a machine-generated domain (random letters, several random subdomains)",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_authenticated_list"
+        },
+        {
+          "type": "random_domain"
+        }
+      ]
+    },
+    {
+      "id": "bulk-bcc",
+      "action": "spam",
+      "description": "Mass mail where you are only a hidden recipient and it is not a mailing list",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "not_addressed_to_me"
+        },
+        {
+          "type": "header_absent",
+          "name": "List-Id"
+        }
+      ]
+    },
+    {
+      "id": "list-after-leak",
+      "action": "label",
+      "description": "Newsletter from a sender first seen after the leak (often sign-ups made with the leaked address)",
+      "all": [
+        {
+          "type": "unknown_sender"
+        },
+        {
+          "type": "first_contact_after_leak"
+        },
+        {
+          "type": "header_present",
+          "name": "List-Unsubscribe"
+        }
+      ]
+    }
+  ]
+}
