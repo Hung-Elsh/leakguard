@@ -61,6 +61,30 @@ class Candidate:
 class PluginResult:
     findings: list[Finding] = field(default_factory=list)
     candidates: list[Candidate] = field(default_factory=list)
+    checked: int = 0                                         # sub-checks attempted (sites, platforms...)
+    failures: dict[str, int] = field(default_factory=dict)   # reason -> count of sub-checks with no answer
+    notes: dict = field(default_factory=dict)                # extra facts for the run log (e.g. dropped sites)
+
+    def fail(self, reason: str) -> None:
+        self.failures[reason] = self.failures.get(reason, 0) + 1
+
+    @property
+    def failed(self) -> int:
+        return sum(self.failures.values())
+
+
+# Known credential compilations and file names typical of email:password lists
+CREDENTIAL_DUMP_RE = re.compile(
+    r"(?i)(cit0day|collection ?#? ?\d|anti-?public|exploit\.in|breach ?compilation|combo|\bulp\b|mail ?access"
+    r"|pass(word)?s?\b|\bcreds?\b|(gmail|hotmail|yahoo|outlook|mail)[^/]*\.txt)")
+
+
+def breach_severity(name: str, fields: list[str] | tuple[str, ...] = ()) -> str:
+    """high: the source shows passwords, or the breach is a known credential compilation / combo list.
+    medium: a breach listing whose contents are unknown (or known to hold no password)."""
+    if any("pass" in str(f).lower() or "hash" in str(f).lower() for f in fields):
+        return "high"
+    return "high" if CREDENTIAL_DUMP_RE.search(name or "") else "medium"
 
 
 def mask(secret: str) -> str:
@@ -79,6 +103,18 @@ def scrub(text: str) -> str:
     """Mask leaked secrets in free text: 'a@b.c:hunter22' and 'password=hunter22'."""
     text = _COMBO_RE.sub(lambda m: f"{m.group(1)}:{mask(m.group(2))}", str(text or ""))
     return _PASSWORD_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}{mask(m.group(3))}", text)
+
+
+_SECRET_PARAM_RE = re.compile(r"(?i)\b(key|api_?key|token|access_token|secret|password|x-key)=([^&\s'\"]+)")
+
+
+def redact(text: str, secrets: list[str] | tuple[str, ...] = ()) -> str:
+    """Remove credentials from messages before they are printed or stored: known secret values,
+    and any key=/token=/secret= URL parameter."""
+    text = str(text or "")
+    for sec in sorted({x for x in secrets if x and len(x) >= 6}, key=len, reverse=True):
+        text = text.replace(sec, "***")
+    return _SECRET_PARAM_RE.sub(lambda m: f"{m.group(1)}=***", text)
 
 
 def candidates_in_text(text: str, keyword: str, origin: str) -> list[Candidate]:

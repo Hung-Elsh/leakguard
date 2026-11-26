@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 from ..config import Settings
 from ..models import Identity, PluginResult
@@ -15,6 +16,7 @@ class Context:
     settings: Settings
     guard: ScopeGuard
     http: Http
+    owned: set[str] = field(default_factory=set)      # claimed identity values (emails, usernames, keyword)
 
     @property
     def keyword(self) -> str:

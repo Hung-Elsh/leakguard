@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS scans (
 CREATE TABLE IF NOT EXISTS source_runs (
   scan_id INTEGER, source TEXT, identity_id INTEGER,
   ok INTEGER, error TEXT, found INTEGER
-);
+);   -- more columns added by RUN_COLUMNS (migration-safe)
 CREATE TABLE IF NOT EXISTS findings (
   id TEXT PRIMARY KEY,
   identity_id INTEGER NOT NULL, source TEXT, category TEXT, title TEXT,
@@ -33,7 +33,34 @@ CREATE TABLE IF NOT EXISTS findings (
   status TEXT,                   -- new | known | gone
   first_seen TEXT, last_seen TEXT, last_scan INTEGER
 );
+CREATE TABLE IF NOT EXISTS mail_log (
+  ts TEXT, profile TEXT, message_id TEXT, sender TEXT, subject TEXT,
+  rule TEXT, action TEXT, applied INTEGER
+);
 """
+
+
+# Per-run log for the dashboard. Secrets are redacted before they get here.
+RUN_COLUMNS = {
+    "status": "TEXT",        # ok | partial | skipped | error | scope_blocked
+    "checked": "INTEGER",    # sub-checks attempted (sites/platforms), when the source reports it
+    "failed": "INTEGER",     # sub-checks without an answer (rate limits, token errors...)
+    "error_type": "TEXT",    # exception class
+    "http_status": "INTEGER",
+    "url": "TEXT",           # request URL (credentials redacted)
+    "detail": "TEXT",        # service response body or traceback (credentials redacted)
+    "started": "TEXT",
+    "duration_ms": "INTEGER",
+}
+
+
+# Owner's verdict on a finding, kept separate from what the sources see (status new/known/gone).
+FINDING_COLUMNS = {"disposition": "TEXT DEFAULT 'open'", "note": "TEXT"}
+# open           exposure to clean up (deactivate/delete/remove)
+# protect        the owner's own account to keep and secure (password change, 2FA), never deleted
+# accepted       known, not a threat, no action
+# false_positive not the owner / the source was wrong
+DISPOSITIONS = ("open", "protect", "accepted", "false_positive")
 
 
 def now() -> str:
@@ -46,6 +73,12 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        for table, columns in (("source_runs", RUN_COLUMNS), ("findings", FINDING_COLUMNS)):
+            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            for col, typ in columns.items():
+                if col not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        self.db.commit()
 
     # ---- identities -------------------------------------------------------
     def _identity(self, row: sqlite3.Row) -> Identity:
@@ -101,13 +134,21 @@ class Store:
         self.db.execute("UPDATE scans SET finished=? WHERE id=?", (now(), scan_id))
         self.db.commit()
 
-    def record_run(self, scan_id: int, source: str, ident: Identity, ok: bool, error: str, found: int) -> None:
-        self.db.execute("INSERT INTO source_runs VALUES(?,?,?,?,?,?)", (scan_id, source, ident.id, int(ok), error, found))
+    def record_run(self, scan_id: int, source: str, ident: Identity, status: str, found: int = 0,
+                   error: str = "", **extra) -> None:
+        """Log one source run. extra: any of RUN_COLUMNS (error_type, http_status, url, detail, ...)."""
+        unknown = set(extra) - set(RUN_COLUMNS)
+        if unknown:
+            raise ValueError(f"unknown run fields {unknown}")
+        cols = ["scan_id", "source", "identity_id", "ok", "error", "found", "status", *extra]
+        vals = [scan_id, source, ident.id, int(status == "ok"), error, found, status, *extra.values()]
+        self.db.execute(f"INSERT INTO source_runs({','.join(cols)}) VALUES({','.join('?' * len(cols))})", vals)
         self.db.commit()
 
-    def save_findings(self, scan_id: int, ident: Identity, source: str, findings: list[Finding]) -> tuple[int, int]:
-        """Upsert findings of one successful source run. Earlier findings of the same
-        source+identity that were not seen again are marked gone. Returns (new, gone)."""
+    def save_findings(self, scan_id: int, ident: Identity, source: str, findings: list[Finding],
+                      mark_gone: bool = True) -> tuple[int, int]:
+        """Upsert findings of one source run. If the run was complete (mark_gone), earlier findings of the
+        same source+identity that were not seen again are marked gone. Returns (new, gone)."""
         ts, seen, new = now(), set(), 0
         for f in findings:
             fid = f.fid(ident)
@@ -118,7 +159,8 @@ class Store:
             if row is None:
                 new += 1
                 self.db.execute(
-                    "INSERT INTO findings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO findings(id, identity_id, source, category, title, url, evidence, severity, data, "
+                    "status, first_seen, last_seen, last_scan) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (fid, ident.id, f.source, f.category, f.title, f.url, f.evidence, f.severity,
                      json.dumps(f.data, default=str), "new", ts, ts, scan_id),
                 )
@@ -129,6 +171,9 @@ class Store:
                     "UPDATE findings SET title=?, url=?, evidence=?, severity=?, data=?, status=?, last_seen=?, last_scan=? WHERE id=?",
                     (f.title, f.url, f.evidence, f.severity, json.dumps(f.data, default=str), status, ts, scan_id, fid),
                 )
+        if not mark_gone:              # partial run: a site that did not answer is not proof of removal
+            self.db.commit()
+            return new, 0
         q = "UPDATE findings SET status='gone', last_scan=? WHERE identity_id=? AND source=? AND status!='gone'"
         if seen:  # note: "NOT IN (NULL)" would match nothing, so the clause is only added when needed
             q += f" AND id NOT IN ({','.join('?' * len(seen))})"

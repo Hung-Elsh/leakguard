@@ -107,6 +107,11 @@ class Settings:
         """API key: profile-defined (lab mocks) first, then the environment."""
         return self.keys.get(name) or os.environ.get(name, "")
 
+    def secret_values(self) -> list[str]:
+        """Every configured API key/token value, so messages can be scrubbed of them."""
+        names = {"HIBP_API_KEY", "INTELX_API_KEY", "GOOGLE_PSE_API_KEY", "BRAVE_API_KEY", "GITHUB_TOKEN", *self.keys}
+        return [v for v in (self.key(n) for n in names) if v and len(v) >= 6]
+
     def source(self, source_id: str) -> dict:
         return self.sources.get(source_id, {})
 

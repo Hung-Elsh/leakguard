@@ -15,7 +15,21 @@ from .scope import ScopeGuard
 
 
 class ToolError(Exception):
-    pass
+    def __init__(self, message: str, detail: str = ""):
+        super().__init__(message)
+        self.detail = detail
+
+
+def expect_output(tool: str, proc: subprocess.CompletedProcess, path: Path | None) -> Path | None:
+    """The tool's output file. Exit 0 without a file = it found nothing to report; a non-zero exit
+    without a file = it failed, raised with its own stderr/stdout so the failure is logged, not hidden."""
+    if path is not None and path.exists():
+        return path
+    if proc.returncode == 0:
+        return None
+    detail = f"exit code {proc.returncode}\n--- stderr ---\n{proc.stderr[-3000:]}\n--- stdout ---\n{proc.stdout[-1500:]}"
+    last = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or ["no output"])[-1]
+    raise ToolError(f"{tool} exited {proc.returncode} without output: {last[:200]}", detail)
 
 
 def find_binary(*candidates: str) -> str:
@@ -60,7 +74,12 @@ def tool_output(
         text = out.read_text(errors="replace")
     raw = DATA / "raw"
     raw.mkdir(parents=True, exist_ok=True)
-    (raw / f"{tool}-{value}.{ext}").write_text(text)
+    raw.chmod(0o700)
+    dest = raw / f"{tool}-{value}.{ext}"
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(dest, 0o600)
     return text
 
 
