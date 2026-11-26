@@ -22,6 +22,20 @@ class Context:
     def keyword(self) -> str:
         return self.settings.keyword
 
+    def match_level(self, text: str) -> str:
+        """How strongly a public text points at the owner:
+        email   - one of the owner's claimed emails appears        (a real exposure)
+        exact   - the keyword or a claimed username as a whole word
+        variant - only a look-alike (keyword glued to other letters/digits)
+        none    - the keyword does not appear (search engines also return similar pages)"""
+        low = (text or "").lower()
+        if any("@" in v and v in low for v in self.owned):
+            return "email"
+        names = {v for v in self.owned if "@" not in v} | {self.keyword}
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(v)}(?![a-z0-9])", low) for v in names):
+            return "exact"
+        return "variant" if self.keyword in low else "none"
+
 
 class SkipSource(Exception):
     """The source cannot run right now (missing key, not installed...). Not a failure of the data."""

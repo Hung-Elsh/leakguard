@@ -360,9 +360,9 @@ class SpiderFoot(ToolPlugin):
             if not cat:
                 continue
             first = data.splitlines()[0][:200] if data else ""
+            sev = {"breach": breach_severity(first), "paste": "high"}.get(cat, "low")
             res.findings.append(Finding(self.name, cat, f"{ev.get('type')}: {first}", evidence=f"module {ev.get('module')}",
-                                        severity="high" if cat in ("breach", "paste") else "low",
-                                        locator=f"{ev.get('type')}:{first}"))
+                                        severity=sev, locator=f"{ev.get('type')}:{first}"))
         return res
 
 

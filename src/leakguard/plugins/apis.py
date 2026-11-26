@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import html
+import re
 import time
 from urllib.parse import quote, urlsplit
 
-from ..models import Finding, Identity, PluginResult, candidates_in_text
+from ..models import Finding, Identity, PluginResult, breach_severity, candidates_in_text
 from .base import Context, Plugin, SkipSource
 
 PASTE_HOSTS = ("pastebin.com", "ghostbin", "paste.ee", "justpaste.it", "controlc.com", "rentry.co", "hastebin")
@@ -35,7 +37,7 @@ class HIBP(Plugin):
                     self.name, "breach", f"{b.get('Title', b['Name'])} breach ({b.get('BreachDate', '?')})",
                     url=f"https://haveibeenpwned.com/PwnedWebsites#{b['Name']}",
                     evidence="exposed: " + ", ".join(classes),
-                    severity="high" if "Passwords" in classes else "medium",
+                    severity=breach_severity(b.get("Name", ""), classes),
                     locator=b["Name"], data={"domain": b.get("Domain"), "data_classes": classes,
                                              "verified": b.get("IsVerified")}))
             r = c.get(f"{base}/pasteaccount/{quote(ident.value)}")
@@ -76,20 +78,39 @@ class IntelX(Plugin):
             name = rec.get("name") or rec.get("systemid")
             res.findings.append(Finding(
                 self.name, "leak", f"IntelX: {name}", url=f"https://intelx.io/?did={rec.get('systemid')}",
-                evidence=f"bucket {rec.get('bucket')}, date {rec.get('date')}", severity="medium",
+                evidence=f"bucket {rec.get('bucket')}, date {rec.get('date')}", severity=breach_severity(str(name)),
                 locator=rec.get("systemid", name), data={k: rec.get(k) for k in ("bucket", "date", "media", "added")}))
             res.candidates += candidates_in_text(str(name), ctx.keyword, f"intelx:{rec.get('systemid')}")
         return res
 
 
+SEVERITY_BY_MATCH = {"email": "high", "exact": "low", "variant": "info", "none": "info"}
+
+
+def _web_result(ctx: Context, res: PluginResult, source: str, title: str, link: str, snippet: str, query: str) -> None:
+    """One search hit -> finding rated by what the page really shows (search engines return similar pages
+    too), plus keyword candidates from its text. Only the owner's email on a page is a high exposure."""
+    host = urlsplit(link).hostname or ""
+    is_paste = any(h in host for h in PASTE_HOSTS)
+    level = ctx.match_level(f"{title} {snippet} {link}")
+    severity = SEVERITY_BY_MATCH[level]
+    if is_paste and level == "exact":
+        severity = "medium"                       # the name in a paste is worth a look, not yet a leak
+    res.findings.append(Finding(
+        source, "paste" if is_paste else "web_page", title or link, url=link, evidence=snippet[:300],
+        severity=severity, locator=link, data={"query": query, "host": host, "match": level}))
+    res.candidates += candidates_in_text(f"{title} {snippet} {link}", ctx.keyword, f"{source}:{link}")
+
+
+def _search_queries(ident: Identity) -> list[str]:
+    if ident.kind == "keyword":
+        return [f'"{ident.value}"', f'"{ident.value}" site:pastebin.com OR site:github.com OR site:reddit.com']
+    return [f'"{ident.value}"']
+
+
 class GoogleSearch(Plugin):
     """Google Programmable Search. 100 free queries/day, so queries are few and exact."""
     name, kinds, needs = "pse", ("email", "username", "keyword"), ("GOOGLE_PSE_API_KEY", "GOOGLE_PSE_CX")
-
-    def queries(self, ident: Identity) -> list[str]:
-        if ident.kind == "keyword":
-            return [f'"{ident.value}"', f'"{ident.value}" site:pastebin.com OR site:github.com OR site:reddit.com']
-        return [f'"{ident.value}"']
 
     def run(self, ctx, ident):
         base = _endpoint(ctx, "pse")
@@ -97,7 +118,7 @@ class GoogleSearch(Plugin):
         pages = 3 if ident.kind == "keyword" else 1
         seen: set[str] = set()
         with ctx.http.client(self.name) as c:
-            for q in self.queries(ident):
+            for q in _search_queries(ident):
                 for page in range(pages):
                     r = c.get(base, params={"key": ctx.settings.key("GOOGLE_PSE_API_KEY"),
                                             "cx": ctx.settings.key("GOOGLE_PSE_CX"),
@@ -105,17 +126,11 @@ class GoogleSearch(Plugin):
                     r.raise_for_status()
                     items = r.json().get("items") or []
                     for it in items:
-                        link, text = it.get("link", ""), f"{it.get('title', '')} {it.get('snippet', '')}"
+                        link = it.get("link", "")
                         if link in seen:
                             continue
                         seen.add(link)
-                        host = urlsplit(link).hostname or ""
-                        is_paste = any(h in host for h in PASTE_HOSTS)
-                        res.findings.append(Finding(
-                            self.name, "paste" if is_paste else "web_page", it.get("title") or link, url=link,
-                            evidence=it.get("snippet", "")[:300], severity="high" if is_paste else "medium",
-                            locator=link, data={"query": q, "host": host}))
-                        res.candidates += candidates_in_text(f"{text} {link}", ctx.keyword, f"pse:{link}")
+                        _web_result(ctx, res, self.name, it.get("title", ""), link, it.get("snippet", ""), q)
                     if len(items) < 10:
                         break
         return res
@@ -137,7 +152,7 @@ class LeakCheck(Plugin):
         for src in body.get("sources") or []:
             res.findings.append(Finding(
                 self.name, "breach", f"{src.get('name')} leak ({src.get('date') or 'date unknown'})",
-                evidence="fields: " + ", ".join(fields), severity="high" if "password" in fields else "medium",
+                evidence="fields: " + ", ".join(fields), severity=breach_severity(src.get("name", ""), fields),
                 locator=src.get("name", ""), data=src))
         return res
 
