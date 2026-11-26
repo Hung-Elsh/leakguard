@@ -96,6 +96,22 @@ def pse():
     return jsonify({"items": page} if page else {})
 
 
+# ---- Brave Search API ------------------------------------------------------------------
+@app.get("/brave/res/v1/web/search")
+def brave():
+    if not request.headers.get("X-Subscription-Token"):
+        return jsonify({"type": "ErrorResponse", "error": {"code": "SUBSCRIPTION_TOKEN_INVALID"}}), 401
+    term = _term(request.args.get("q", ""))
+    offset, count = int(request.args.get("offset", 0)), int(request.args.get("count", 20))
+    removed = {f"/broker/person/{i}" for i in state()["broker_removed"]}
+    items = [{"title": f"<strong>{html.escape(it['title'])}</strong>", "url": it["link"], "description": it["snippet"]}
+             for it in SEED["search"] if term in f"{it['title']} {it['snippet']} {it['link']}".lower()
+             and not any(it["link"].endswith(r) for r in removed)]
+    page = items[offset * count:(offset + 1) * count]
+    return jsonify({"type": "search", "query": {"original": request.args.get("q"),
+                    "more_results_available": len(items) > (offset + 1) * count}, "web": {"results": page}})
+
+
 # ---- LeakCheck public API ----------------------------------------------------------
 @app.get("/leakcheck/api/public")
 def leakcheck():

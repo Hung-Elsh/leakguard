@@ -11,6 +11,7 @@ endpoints:
   hibp: http://127.0.0.1:5055/hibp/api/v3
   intelx: http://127.0.0.1:5055/intelx
   pse: http://127.0.0.1:5055/customsearch/v1
+  brave: http://127.0.0.1:5055/brave/res/v1
   leakcheck: http://127.0.0.1:5055/leakcheck/api/public
   psbdmp: http://127.0.0.1:5055/psbdmp/api/v3
   gravatar: http://127.0.0.1:5055/gravatar/v3

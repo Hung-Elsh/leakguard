@@ -47,6 +47,8 @@ class Plugin:
     needs: tuple[str, ...] = ()        # required API keys
 
     def check(self, ctx: Context) -> None:
+        if not ctx.settings.is_lab and not ctx.settings.source(self.name).get("allowed"):
+            raise SkipSource("disabled in config/sources.json (allowed: false)")
         missing = [k for k in self.needs if not ctx.settings.key(k)]
         if missing:
             raise SkipSource(f"missing key(s): {', '.join(missing)}")

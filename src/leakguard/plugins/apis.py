@@ -136,6 +136,40 @@ class GoogleSearch(Plugin):
         return res
 
 
+class BraveSearch(Plugin):
+    """Brave Search API: its own index of the whole web. Free tier ~1 request/second."""
+    name, kinds, needs = "brave", ("email", "username", "keyword"), ("BRAVE_API_KEY",)
+
+    def run(self, ctx, ident):
+        base = _endpoint(ctx, "brave")
+        res = PluginResult()
+        pages = 3 if ident.kind == "keyword" else 1          # 20 results per page
+        seen: set[str] = set()
+        headers = {"Accept": "application/json", "X-Subscription-Token": ctx.settings.key("BRAVE_API_KEY")}
+        with ctx.http.client(self.name, headers) as c:
+            for q in _search_queries(ident):
+                for page in range(pages):
+                    r = c.get(f"{base}/web/search", params={"q": q, "count": 20, "offset": page})
+                    r.raise_for_status()
+                    body = r.json()
+                    items = (body.get("web") or {}).get("results") or []
+                    for it in items:
+                        link = it.get("url", "")
+                        if not link or link in seen:
+                            continue
+                        seen.add(link)
+                        snippet = " ".join([it.get("description", ""), *(it.get("extra_snippets") or [])])
+                        _web_result(ctx, res, self.name, _strip_tags(it.get("title", "")), link,
+                                    _strip_tags(snippet), q)
+                    if not (body.get("query") or {}).get("more_results_available"):
+                        break
+        return res
+
+
+def _strip_tags(text: str) -> str:
+    return re.sub(r"<[^>]+>", "", html.unescape(text or ""))
+
+
 class LeakCheck(Plugin):
     name, kinds = "leakcheck", ("email", "username")
 
@@ -291,4 +325,4 @@ class Brokers(Plugin):
         return res
 
 
-API_PLUGINS = [HIBP(), IntelX(), GoogleSearch(), LeakCheck(), Psbdmp(), Gravatar(), PGP(), GitHub(), Brokers()]
+API_PLUGINS = [HIBP(), IntelX(), GoogleSearch(), BraveSearch(), LeakCheck(), Psbdmp(), Gravatar(), PGP(), GitHub(), Brokers()]

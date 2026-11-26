@@ -25,6 +25,7 @@ class ToolPlugin(Plugin):
     binary: tuple[str, ...] = ()
 
     def check(self, ctx: Context) -> None:
+        super().check(ctx)
         if ctx.settings.tools_mode == "run":
             try:
                 find_binary(*self.binary)

@@ -6,6 +6,7 @@ endpoints:
   hibp: https://haveibeenpwned.com/api/v3
   intelx: ${INTELX_API_URL}
   pse: https://www.googleapis.com/customsearch/v1
+  brave: https://api.search.brave.com/res/v1
   leakcheck: https://leakcheck.io/api/public
   psbdmp: https://psbdmp.ws/api/v3
   gravatar: https://api.gravatar.com/v3
