@@ -20,6 +20,11 @@ from .store import Store
 app = typer.Typer(help="Find, block and remove your own leaked personal data.", no_args_is_help=True)
 console = Console()
 
+
+def _register_subcommands() -> None:
+    from .cli_remove import app as remove_app
+    app.add_typer(remove_app, name="remove")
+
 ProfileOpt = typer.Option(None, "--profile", "-p", help="lab | internet (default: LEAKGUARD_PROFILE or lab)")
 SourceOpt = typer.Option(None, "--source", "-s", help="Only these sources (repeatable).")
 
@@ -398,6 +403,8 @@ def doctor() -> None:
         for tool in missing:
             console.print(f"  [cyan]{tool['name']}[/]: {tool['install']}", soft_wrap=True)
 
+
+_register_subcommands()
 
 if __name__ == "__main__":
     app()

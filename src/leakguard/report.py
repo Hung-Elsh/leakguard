@@ -42,6 +42,7 @@ def build(settings: Settings, store: Store) -> dict:
                                                         f["disposition"] or "open"), f["status"] == "gone",
                                                     SEV_ORDER[f["severity"]], f["category"])),
         "last_scan_runs": [dict(r) for r in store.runs(last)] if last else [],
+        "actions": [dict(a) for a in store.actions()],
     }
 
 
@@ -70,6 +71,14 @@ def to_markdown(rep: dict) -> str:
     if pending:
         lines += ["", f"**{len(pending)} candidate(s) wait for your decision:** "
                   "`leakguard claim <id>` if it is yours, `leakguard reject <id>` if not."]
+    if rep.get("actions"):
+        by_state = Counter(a["state"] for a in rep["actions"])
+        lines += ["", "## Removal progress", "| State | Actions |", "|---|---|",
+                  *[f"| {k} | {v} |" for k, v in sorted(by_state.items())],
+                  "", "| # | State | Kind | Target | Contact |", "|---|---|---|---|---|",
+                  *[f"| {a['id']} | {a['state']} | {a['kind']} | {_md_escape(a['target'])} | "
+                    f"{_md_escape(a['contact'] or 'needed')}{'' if a['contact_verified'] or not a['contact'] else ' (unverified)'} |"
+                    for a in rep["actions"]]]
     protect = [f for f in rep["findings"] if f["disposition"] == "protect" and f["status"] != "gone"]
     if protect:
         lines += ["", "## Accounts to protect (keep and secure: change password, enable 2-step verification)",
