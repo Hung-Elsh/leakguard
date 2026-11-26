@@ -25,7 +25,14 @@ _intelx_searches: dict[str, str] = {}
 
 
 def state() -> dict:
-    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {"broker_removed": []}
+    s = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+    s.setdefault("broker_removed", [])
+    s.setdefault("injected_search", [])      # lab: new search hits to simulate a fresh leak (monitor tests)
+    return s
+
+
+def search_items() -> list[dict]:
+    return SEED["search"] + state()["injected_search"]
 
 
 def save_state(s: dict) -> None:
@@ -89,7 +96,7 @@ def pse():
     term = _term(request.args.get("q", ""))
     start = int(request.args.get("start", 1))
     removed = {f"/broker/person/{i}" for i in state()["broker_removed"]}
-    items = [it for it in SEED["search"]
+    items = [it for it in search_items()
              if term in f"{it['title']} {it['snippet']} {it['link']}".lower()
              and not any(it["link"].endswith(r) for r in removed)]
     page = items[start - 1:start + 9]
@@ -105,7 +112,7 @@ def brave():
     offset, count = int(request.args.get("offset", 0)), int(request.args.get("count", 20))
     removed = {f"/broker/person/{i}" for i in state()["broker_removed"]}
     items = [{"title": f"<strong>{html.escape(it['title'])}</strong>", "url": it["link"], "description": it["snippet"]}
-             for it in SEED["search"] if term in f"{it['title']} {it['snippet']} {it['link']}".lower()
+             for it in search_items() if term in f"{it['title']} {it['snippet']} {it['link']}".lower()
              and not any(it["link"].endswith(r) for r in removed)]
     page = items[offset * count:(offset + 1) * count]
     return jsonify({"type": "search", "query": {"original": request.args.get("q"),
