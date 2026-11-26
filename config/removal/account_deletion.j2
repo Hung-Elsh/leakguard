@@ -1,0 +1,19 @@
+Subject: Request to delete my account and personal data
+Dear {{ target }} privacy / support team,
+
+I am the person these identifiers (email addresses / usernames) belong to:
+{% for i in identities %}  - {{ i }}
+{% endfor %}
+Please delete any account registered with them and erase the personal data you hold about me, as provided by
+applicable data protection law (for example Article 17 GDPR, or the equivalent law where you operate). If an
+account cannot be deleted, please deactivate it and remove it from public view.
+
+What I found, for reference:
+{% for e in evidence %}  - {{ e.title }}{% if e.url %} ({{ e.url }}){% endif %}
+{% endfor %}
+Please confirm by reply to this address when it is done. If you need to verify that I control this address,
+reply here and I will confirm. Please do not ask for more personal data than is needed for that.
+
+Thank you,
+{{ owner_name or owner_email }}
+{{ today }}

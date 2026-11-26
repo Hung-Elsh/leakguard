@@ -1,0 +1,10 @@
+Subject: Abuse report: pastes publishing my personal data
+Hello,
+
+The pastes below publish my email address together with what appear to be leaked credentials. I am the person
+this address belongs to ({{ owner_email }}). Please remove them:
+{% for e in evidence %}  - {{ e.url or e.title }}
+{% endfor %}
+Thank you,
+{{ owner_name or owner_email }}
+{{ today }}

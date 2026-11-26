@@ -1,0 +1,15 @@
+Subject: Opt-out and erasure request
+Dear {{ target }} team,
+
+Please remove every record about me from your service, stop selling or sharing my data, and erase it, as
+provided by applicable data protection and privacy law (for example Article 17 GDPR / CCPA deletion right).
+My identifiers:
+{% for i in identities %}  - {{ i }}
+{% endfor %}
+Listings found:
+{% for e in evidence %}  - {{ e.title }}{% if e.url %} ({{ e.url }}){% endif %}
+{% endfor %}
+Please confirm by reply when it is done.
+
+{{ owner_name or owner_email }}
+{{ today }}
