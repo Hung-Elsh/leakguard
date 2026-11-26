@@ -1,0 +1,4 @@
+{"zorblat11@seclab.test": [
+  {"query": "zorblat11@seclab.test", "platform": "Spotify", "valid": "True", "success": "True", "available": "False", "link": "https://www.spotify.com"},
+  {"query": "zorblat11@seclab.test", "platform": "Instagram", "valid": "True", "success": "True", "available": "True"}
+]}

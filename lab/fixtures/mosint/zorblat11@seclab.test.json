@@ -1,0 +1,8 @@
+{"email": "zorblat11@seclab.test", "verified": true,
+ "emailrep": {"details": {"credentials_leaked": true, "data_breach": true, "first_seen": "2019-04-02", "profiles": ["spotify"]}},
+ "breachdirectory": {"success": true, "found": 1, "result": [{"has_password": true, "sources": ["LabShop"]}]},
+ "haveibeenpwned": null, "hunter": {}, "ipapi": {}, "intelx": null,
+ "psbdmp": [{"id": "LabP4st3"}],
+ "instagram_exists": false, "spotify_exists": true, "twitter_exists": false,
+ "google_search": ["http://127.0.0.1:5055/paste/LabP4st3"],
+ "dns_records": [{"Type": "MX", "Value": "10 mail.seclab.test."}]}

@@ -1,0 +1,8 @@
+{
+  "Reddit": {"username": "zorblat_x", "url_user": "https://www.reddit.com/user/zorblat_x",
+             "status": {"status": "Claimed", "url": "https://www.reddit.com/user/zorblat_x",
+                        "ids": {"fullname": "Zor Blat", "bio": "backup: zorblat.backup@seclab.test", "created_at": "2015-02-01"},
+                        "tags": ["discussion"]}, "http_status": 200},
+  "Steam": {"username": "zorblat_x", "url_user": "https://steamcommunity.com/id/zorblat_x",
+            "status": {"status": "Available", "url": "https://steamcommunity.com/id/zorblat_x", "ids": {}, "tags": ["gaming"]}, "http_status": 404}
+}

@@ -1,0 +1,4 @@
+username,name,url_main,url_user,exists,http_status,response_time_s
+zorblat_x,GitHub,https://www.github.com/,https://www.github.com/zorblat_x,Claimed,200,0.41
+zorblat_x,Reddit,https://www.reddit.com/,https://www.reddit.com/user/zorblat_x,Claimed,200,0.73
+zorblat_x,Steam,https://steamcommunity.com/,https://steamcommunity.com/id/zorblat_x,Available,404,0.52

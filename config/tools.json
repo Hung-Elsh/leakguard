@@ -1,0 +1,33 @@
+{
+  "_comment": "External OSINT tools LeakGuard wraps. 'detect' lists binaries or paths to look for; the first match wins. The owner runs the install commands.",
+  "tools": [
+    {"name": "holehe", "purpose": "email -> sites with an account registered", "phase": 1,
+     "detect": ["holehe"], "install": "pipx install --python 3.12 --fetch-missing-python holehe"},
+    {"name": "h8mail", "purpose": "email -> breach hits (free and keyed modes)", "phase": 1,
+     "detect": ["h8mail"], "install": "pipx install --python 3.12 --fetch-missing-python h8mail"},
+    {"name": "sherlock", "purpose": "username -> profiles on 400+ sites", "phase": 1,
+     "detect": ["sherlock"], "install": "pipx install --python 3.12 --fetch-missing-python sherlock-project"},
+    {"name": "maigret", "purpose": "username -> profiles on 3000+ sites, with parsed profile data", "phase": 1,
+     "detect": ["maigret"], "install": "pipx install --python 3.12 --fetch-missing-python maigret"},
+    {"name": "ghunt", "purpose": "Google account -> public profile, Maps reviews, calendar, photos", "phase": 1,
+     "detect": ["ghunt"], "install": "pipx install --python 3.12 --fetch-missing-python ghunt   # then: ghunt login"},
+    {"name": "socialscan", "purpose": "email/username availability on major platforms", "phase": 1,
+     "detect": ["socialscan"], "install": "pipx install --python 3.12 --fetch-missing-python socialscan"},
+    {"name": "blackbird", "purpose": "username and email -> accounts (WhatsMyName data)", "phase": 1,
+     "detect": ["blackbird", "~/tools/blackbird/blackbird.py"],
+     "install": "git clone https://github.com/p1ngul1n0/blackbird ~/tools/blackbird && python3 -m venv ~/tools/blackbird/.venv && ~/tools/blackbird/.venv/bin/pip install -r ~/tools/blackbird/requirements.txt"},
+    {"name": "mosint", "purpose": "email -> breaches, related domains, social accounts", "phase": 1,
+     "detect": ["mosint", "~/go/bin/mosint"],
+     "install": "sudo apt install -y golang-go && go install github.com/alpkeskin/mosint/v3/cmd/mosint@latest"},
+    {"name": "theHarvester", "purpose": "keyword/domain -> emails and hosts from many search sources", "phase": 1,
+     "detect": ["theHarvester"], "install": "sudo apt install -y theharvester"},
+    {"name": "spiderfoot", "purpose": "OSINT framework, email/username modules, run headless", "phase": 1,
+     "detect": ["spiderfoot"], "install": "sudo apt install -y spiderfoot"},
+    {"name": "recon-ng", "purpose": "OSINT framework, profiler and contacts modules", "phase": 1,
+     "detect": ["recon-ng"], "install": "sudo apt install -y recon-ng"},
+    {"name": "chromium", "purpose": "browser for Playwright opt-out forms", "phase": 3,
+     "detect": ["chromium"], "install": "sudo apt install -y chromium"},
+    {"name": "git-filter-repo", "purpose": "rewrite own git history to remove the email", "phase": 3,
+     "detect": ["git-filter-repo"], "install": "sudo apt install -y git-filter-repo"}
+  ]
+}

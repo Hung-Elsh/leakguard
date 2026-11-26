@@ -1,0 +1,20 @@
+# Internet profile: only hosts of sources marked allowed in config/sources.json.
+name: internet
+tools_mode: run
+
+endpoints:
+  hibp: https://haveibeenpwned.com/api/v3
+  intelx: ${INTELX_API_URL}
+  pse: https://www.googleapis.com/customsearch/v1
+  leakcheck: https://leakcheck.io/api/public
+  psbdmp: https://psbdmp.ws/api/v3
+  gravatar: https://api.gravatar.com/v3
+  openpgp: https://keys.openpgp.org/vks/v1
+  ubuntu_keyserver: https://keyserver.ubuntu.com/pks/lookup
+  github: https://api.github.com
+
+# Real brokers are added in phase 3 together with their opt-out flows.
+brokers: []
+
+# Keys come from .env (see .env.example)
+keys: {}

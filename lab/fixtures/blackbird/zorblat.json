@@ -1,0 +1,5 @@
+[
+  {"name": "Twitch", "url": "https://www.twitch.tv/zorblat", "category": "gaming", "status": "FOUND", "metadata": null},
+  {"name": "Pinterest", "url": "https://www.pinterest.com/zorblat/", "category": "social", "status": "FOUND", "metadata": null},
+  {"name": "Behance", "url": "https://www.behance.net/zorblat", "category": "art", "status": "NOT-FOUND", "metadata": null}
+]

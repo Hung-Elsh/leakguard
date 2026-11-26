@@ -1,0 +1,3 @@
+[{"generated": 1700000000, "type": "Hacked Email Address", "data": "zorblat11@seclab.test [LabShop]", "module": "sfp_haveibeenpwned", "source": "zorblat11@seclab.test"},
+{"generated": 1700000001, "type": "Account on External Site", "data": "Discord (Category: social)\n<SFURL>https://discord.com</SFURL>", "module": "sfp_accounts", "source": "zorblat11@seclab.test"},
+{"generated": 1700000002, "type": "Email Address - Generic", "data": "postmaster@seclab.test", "module": "sfp_email", "source": "seclab.test"}]

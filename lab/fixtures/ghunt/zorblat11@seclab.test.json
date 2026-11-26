@@ -1,0 +1,13 @@
+{
+  "PROFILE_CONTAINER": {
+    "profile": {
+      "personId": "100000000000000000001",
+      "names": {"PROFILE": {"fullname": "Zor Blat", "firstName": "Zor", "lastName": "Blat"}},
+      "profilePhotos": {"PROFILE": {"url": "https://lh3.googleusercontent.com/a/lab-photo", "isDefault": false}},
+      "coverPhotos": {"PROFILE": {"url": "https://lh3.googleusercontent.com/c/lab-cover", "isDefault": false}}
+    },
+    "play_games": null,
+    "maps": {"photos": [], "reviews": [], "stats": {"Reviews": 3, "Ratings": 5, "Photos": 0}},
+    "calendar": {"details": null, "events": null}
+  }
+}

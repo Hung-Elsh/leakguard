@@ -1,0 +1,30 @@
+# Lab profile: no internet. Every request must go to 127.0.0.1 or the lab /29.
+name: lab
+allowed_networks: [127.0.0.0/8, "::1/128", 192.168.1.248/29]
+
+# External OSINT tools talk to real websites, so in the lab they never run:
+# their recorded output in lab/fixtures/ is parsed instead.
+tools_mode: fixtures
+fixtures_dir: lab/fixtures
+
+endpoints:
+  hibp: http://127.0.0.1:5055/hibp/api/v3
+  intelx: http://127.0.0.1:5055/intelx
+  pse: http://127.0.0.1:5055/customsearch/v1
+  leakcheck: http://127.0.0.1:5055/leakcheck/api/public
+  psbdmp: http://127.0.0.1:5055/psbdmp/api/v3
+  gravatar: http://127.0.0.1:5055/gravatar/v3
+  openpgp: http://127.0.0.1:5055/vks/v1
+  ubuntu_keyserver: http://127.0.0.1:5055/pks/lookup
+  github: http://127.0.0.1:5055/github
+
+# Lab copies of the data brokers in config/sources.json
+brokers:
+  - {id: lab-broker, name: "PeopleFinder (lab mock)", search_url: "http://127.0.0.1:5055/broker/search?q={q}"}
+
+# Mock services accept any non-empty key
+keys:
+  HIBP_API_KEY: lab
+  INTELX_API_KEY: lab
+  GOOGLE_PSE_API_KEY: lab
+  GOOGLE_PSE_CX: lab

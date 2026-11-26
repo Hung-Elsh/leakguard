@@ -1,0 +1,6 @@
+# Fictional lab identity. The real owner identity is never stored in the repository:
+# it lives in ~/.config/leakguard/identities.yaml, created by `leakguard init`.
+keyword: zorblat
+emails: [zorblat11@seclab.test]
+usernames: []
+owner: {full_name: "Zor Blat (lab)", country: ""}
