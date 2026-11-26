@@ -1,6 +1,7 @@
 """Gmail API backend (internet profile). OAuth on first use; the token stays in ~/.config/leakguard.
 
-Scopes: gmail.modify (read, label, spam, trash — never permanent delete) and gmail.settings.basic (filters).
+Scopes: gmail.modify (read, label, spam, trash — never permanent delete), gmail.settings.basic (filters) and
+gmail.send (removal requests sent from the owner's address after --confirm). Adding a scope asks for consent once.
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ from .backend import MailBackend
 from .message import MailMessage, parse
 from .rules import OwnerLists
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.settings.basic"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.settings.basic",
+          "https://www.googleapis.com/auth/gmail.send"]
 TOKEN = USER_CONFIG / "gmail_token.json"
 LABELS = {"label": "LeakGuard/Review", "blocked": "LeakGuard/Blocked"}
 CHUNK = 20          # addresses per server-side filter (Gmail limits the criteria length)
@@ -42,6 +44,8 @@ class GmailBackend(MailBackend):
         from googleapiclient.discovery import build
 
         creds = Credentials.from_authorized_user_file(str(TOKEN), SCOPES) if TOKEN.exists() else None
+        if creds and not creds.has_scopes(SCOPES):
+            creds = None                       # a scope was added since consent: ask again
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         if not creds or not creds.valid:
@@ -110,6 +114,11 @@ class GmailBackend(MailBackend):
             vals = [h["value"] for h in m.get("payload", {}).get("headers", [])]
             out |= {a.lower() for _, a in getaddresses(vals) if a}
         return out
+
+    def send(self, msg) -> str:
+        """Send an email from the owner's account (removal requests). Returns the Gmail message id."""
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        return self.users.messages().send(userId="me", body={"raw": raw}).execute(num_retries=RETRIES)["id"]
 
     # ---- changing -----------------------------------------------------------------
     def _labels(self) -> dict[str, str]:
