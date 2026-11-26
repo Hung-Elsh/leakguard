@@ -66,7 +66,7 @@ def submit_form(settings: Settings, store: Store, action_id: int, confirm: bool)
     if not entry or not entry.form:
         raise drafts.DraftError(f"action {action_id}: no form definition in the catalog for {a['target']}")
     findings = store.findings_by_ids(json.loads(a["finding_ids"] or "[]"))
-    values = {"email": drafts.sender_address(settings), "url": next((f["url"] for f in findings if f["url"]), "")}
+    values = {"email": drafts.sender_address(settings, a), "url": next((f["url"] for f in findings if f["url"]), "")}
     res = browser.fill(settings, ScopeGuard(settings), action_id, entry.url, entry.form, values, confirm)
     if res.submitted:
         note = f"form submitted ({'success text seen' if res.success else 'no success text'}); screenshot {res.after}"

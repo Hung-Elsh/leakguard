@@ -122,6 +122,12 @@ class GmailBackend(MailBackend):
             out |= {a.lower() for _, a in getaddresses(vals) if a}
         return out
 
+    def send_as(self) -> set[str]:
+        """Addresses this account can send from: the signed-in address and its verified aliases."""
+        me = self.users.getProfile(userId="me").execute(num_retries=RETRIES)["emailAddress"].lower()
+        aliases = self.users.settings().sendAs().list(userId="me").execute(num_retries=RETRIES).get("sendAs", [])
+        return {me} | {a["sendAsEmail"].lower() for a in aliases if a.get("verificationStatus", "accepted") == "accepted"}
+
     def send(self, msg) -> str:
         """Send an email from the owner's account (removal requests). Returns the Gmail message id."""
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()

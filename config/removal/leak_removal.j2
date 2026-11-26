@@ -2,8 +2,9 @@ Subject: Removal request: records containing my personal data
 Dear {{ target }} team,
 
 Your index contains records with my email address, which come from data breaches and credential lists.
-I am the person this address belongs to ({{ owner_email }}). Please remove these records, or at least the
-lines and previews that contain my address, from search results and previews:
+The address {{ owner_email }} belongs to me, and I am sending this request from it so you can verify that.
+Please remove these records, or at least the lines and previews that contain my address, from search results
+and previews:
 {% for e in evidence %}  - {{ e.title }}{% if e.url %} ({{ e.url }}){% endif %}
 {% endfor %}
 This request is made under applicable data protection law (for example Article 17 GDPR). Please confirm by

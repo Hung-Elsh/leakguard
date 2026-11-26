@@ -24,8 +24,14 @@ class DraftError(Exception):
     pass
 
 
-def sender_address(settings: Settings) -> str:
-    """Requests go out from the owner's main (first) address, so replies land in their inbox."""
+def sender_address(settings: Settings, action=None) -> str:
+    """Requests go out from the address the data is about: sites and indexes act only for the address a request
+    comes from (Intelligence X removed nothing for an address listed in a request sent from another one). An
+    action about exactly one email address uses it; anything else uses the owner's main (first) address."""
+    if action is not None:
+        addresses = [i for i in json.loads(action["identities"] or "[]") if "@" in i]
+        if len(addresses) == 1:
+            return addresses[0]
     emails = [s["value"] for s in settings.seeds if s.get("kind") == "email"]
     if not emails:
         raise DraftError("no owner email configured (leakguard init)")
@@ -57,12 +63,12 @@ def render(settings: Settings, store: Store, action_id: int) -> tuple[EmailMessa
         identities=json.loads(a["identities"] or "[]"),
         evidence=_evidence(findings),
         owner_name=(settings.owner or {}).get("full_name", ""),
-        owner_email=sender_address(settings),
+        owner_email=sender_address(settings, a),
         today=date.today().isoformat(),
     )
     subject, _, body = text.partition("\n")
     msg = EmailMessage()
-    msg["From"] = sender_address(settings)
+    msg["From"] = sender_address(settings, a)
     if has_address:
         msg["To"] = a["contact"]
     msg["Subject"] = subject.removeprefix("Subject:").strip()
