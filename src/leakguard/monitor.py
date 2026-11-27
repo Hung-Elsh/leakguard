@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from email.message import EmailMessage
@@ -40,6 +41,7 @@ class MonitorResult:
     snapshot: dict = field(default_factory=dict)
     report: Path | None = None
     alerted: list[str] = field(default_factory=list)
+    cancelled: bool = False                                  # stopped by the owner part way
 
     def grouped_new(self) -> list[dict]:
         """One entry per exposed page/record: the same leak is found once per identity and per search source."""
@@ -139,7 +141,8 @@ def rerate(settings: Settings, store: Store) -> int:
 
 # ---- the run ------------------------------------------------------------------------------
 def run(settings: Settings, store: Store, sources: list[str] | None = None, quick: bool = False,
-        workers: int = 4) -> MonitorResult:
+        workers: int = 4, progress: engine.Progress | None = None,
+        cancel: threading.Event | None = None) -> MonitorResult:
     from .plugins import ALL_PLUGINS
     from .removal import tracker
 
@@ -149,7 +152,10 @@ def run(settings: Settings, store: Store, sources: list[str] | None = None, quic
     before_actions = {a["id"]: a["state"] for a in store.actions()}
     only = sources or ([p.name for p in ALL_PLUGINS if p.name not in SLOW_TOOLS] if quick else None)
 
-    summaries = [engine.expand(settings, store, only, workers), engine.scan(settings, store, only, workers)]
+    summaries = [engine.expand(settings, store, only, workers, progress, cancel)]
+    if not summaries[0].cancelled:
+        summaries.append(engine.scan(settings, store, only, workers, progress, cancel))
+    res.cancelled = any(s.cancelled for s in summaries)
     for s in summaries:
         res.candidates += s.new_candidates
         res.problems += [f"{src} / {ident}: {status}" for src, ident, status in s.runs if status.startswith("error")]
@@ -164,6 +170,8 @@ def run(settings: Settings, store: Store, sources: list[str] | None = None, quic
                 res.reopened.append(f"#{a['id']} {a['target']}: {len(back)} linked finding(s) seen again")
 
     for a in store.actions():
+        if res.cancelled:
+            break                            # stopped by the owner: due re-checks wait for the next run
         if (a["next_check"] and a["next_check"] <= now() and a["kind"] not in tracker.OWNER_CONFIRMED
                 and a["state"] in ("requested", "acknowledged", "removed", "done")):
             res.checks.append(f"#{a['id']} {a['target']}: {tracker.check(settings, store, a['id'])}")

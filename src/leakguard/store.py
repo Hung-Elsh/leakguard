@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS mail_log (
   ts TEXT, profile TEXT, message_id TEXT, sender TEXT, subject TEXT,
   rule TEXT, action TEXT, applied INTEGER
 );
+CREATE TABLE IF NOT EXISTS connections (  -- which services are connected: never the secret itself (keystore.py)
+  name TEXT PRIMARY KEY,                  -- e.g. BRAVE_API_KEY, MAIL_APP_PASSWORD, GMAIL_TOKEN
+  added TEXT, last_test TEXT,
+  last_result TEXT                        -- ok | failed: <plain reason>
+);
 """
 
 
@@ -76,7 +81,8 @@ RUN_COLUMNS = {
 
 
 # Owner's verdict on a finding, kept separate from what the sources see (status new/known/gone).
-FINDING_COLUMNS = {"disposition": "TEXT DEFAULT 'open'", "note": "TEXT"}
+FINDING_COLUMNS = {"disposition": "TEXT DEFAULT 'open'", "note": "TEXT",
+                   "reviewed": "TEXT"}   # when the owner gave a verdict; NULL = new, waiting in the app's To do
 # open           exposure to clean up (deactivate/delete/remove)
 # protect        the owner's own account to keep and secure (password change, 2FA), never deleted
 # accepted       known, not a threat, no action
@@ -108,14 +114,18 @@ def now() -> str:
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        # one connection per thread; WAL + a busy timeout let the app, the CLI and the weekly check share the file
+        self.db = sqlite3.connect(path, timeout=30)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         for table, columns in (("source_runs", RUN_COLUMNS), ("findings", FINDING_COLUMNS)):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
             for col, typ in columns.items():
                 if col not in have:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+                    if (table, col) == ("findings", "reviewed"):     # existing findings were seen in the CLI
+                        self.db.execute("UPDATE findings SET reviewed = coalesce(first_seen, ?)", (now(),))
         # leak-index removal used to be one action for all addresses; it is now one per address (IntelX acts only
         # for the address a request comes from), keyed leakindex:intelx:<address>
         self.db.execute("UPDATE actions SET key = key || ':' || json_extract(identities, '$[0]') "
@@ -247,10 +257,26 @@ class Store:
             rows = list(self.db.execute("SELECT id, title FROM findings WHERE id LIKE ?", (pre + "%",)))
             if len(rows) != 1:
                 raise KeyError(f"{pre!r} matches {len(rows)} findings")
-            self.db.execute("UPDATE findings SET disposition=?, note=? WHERE id=?", (disposition, note, rows[0]["id"]))
+            self.db.execute("UPDATE findings SET disposition=?, note=?, reviewed=? WHERE id=?",
+                            (disposition, note, now(), rows[0]["id"]))
             done.append(rows[0])
         self.db.commit()
         return done
+
+    # ---- connections (metadata only; the secrets are in keystore) ----------------------------
+    def set_connection(self, name: str, result: str | None = None) -> None:
+        ts = now()
+        self.db.execute("INSERT INTO connections(name, added) VALUES(?, ?) ON CONFLICT(name) DO NOTHING", (name, ts))
+        if result is not None:
+            self.db.execute("UPDATE connections SET last_test=?, last_result=? WHERE name=?", (ts, result, name))
+        self.db.commit()
+
+    def forget_connection(self, name: str) -> None:
+        self.db.execute("DELETE FROM connections WHERE name=?", (name,))
+        self.db.commit()
+
+    def connections(self) -> dict[str, sqlite3.Row]:
+        return {r["name"]: r for r in self.db.execute("SELECT * FROM connections ORDER BY name")}
 
     def findings(self, status: str | None = None) -> list[sqlite3.Row]:
         q = ("SELECT f.*, i.value AS identity FROM findings f JOIN identities i ON i.id=f.identity_id")

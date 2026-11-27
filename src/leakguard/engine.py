@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from typing import Callable
 
 import httpx
 
@@ -30,6 +32,7 @@ class RunSummary:
     gone_findings: int = 0
     new_candidates: list[str] = field(default_factory=list)
     runs: list[tuple[str, str, str]] = field(default_factory=list)   # (source, identity, status)
+    cancelled: bool = False          # stopped by the owner: runs that had not started were dropped
 
 
 @dataclass
@@ -126,8 +129,13 @@ def _select(plugins: list[Plugin], only: list[str] | None) -> list[Plugin]:
     return [p for p in plugins if p.name in only]
 
 
+# progress(done, total, source, identity, status): called after every finished source run (from this thread)
+Progress = Callable[[int, int, str, str, str], None]
+
+
 def _execute(settings: Settings, store: Store, stage: str, idents: list[Identity],
-             only: list[str] | None, workers: int) -> RunSummary:
+             only: list[str] | None, workers: int, progress: Progress | None = None,
+             cancel: threading.Event | None = None) -> RunSummary:
     for i in idents:                      # the claim gate, enforced again right before any lookup
         if not i.claimed:
             raise ClaimError(f"{i.value} is not claimed; refusing to scan it")
@@ -139,11 +147,20 @@ def _execute(settings: Settings, store: Store, stage: str, idents: list[Identity
     secrets = settings.secret_values()
     jobs = [(p, i) for i in idents for p in _select(ALL_PLUGINS, only) if i.kind in p.kinds]
 
+    done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_run_one, ctx, p, i, secrets) for p, i in jobs]
         for fut in as_completed(futures):
+            if cancel is not None and cancel.is_set():
+                for other in futures:
+                    other.cancel()                  # runs not started yet are dropped; finished ones are saved
+            if fut.cancelled():
+                continue
             o = fut.result()
             p, i = o.plugin, o.ident
+            done += 1
+            if progress:
+                progress(done, len(jobs), p.name, i.value, o.status)
             if o.status not in ("ok", "partial"):
                 store.record_run(scan_id, p.name, i, o.status, 0, o.error, **o.log)
                 label = {"skipped": "skipped", "scope_blocked": "SCOPE BLOCKED", "error": "error"}[o.status]
@@ -160,26 +177,29 @@ def _execute(settings: Settings, store: Store, stage: str, idents: list[Identity
             note = f"; {o.error}" if o.status == "partial" else ""
             summary.runs.append((p.name, i.value, f"{o.status}, {len(result.findings)} finding(s){note}"))
     store.finish_scan(scan_id)
+    summary.cancelled = bool(cancel is not None and cancel.is_set())
     return summary
 
 
-def expand(settings: Settings, store: Store, only: list[str] | None = None, workers: int = 4) -> RunSummary:
+def expand(settings: Settings, store: Store, only: list[str] | None = None, workers: int = 4,
+           progress: Progress | None = None, cancel: threading.Event | None = None) -> RunSummary:
     kw = bootstrap(settings, store)
     derived = [c.value for c in _derived_usernames(settings, store) if store.add_candidate(c)]
-    summary = _execute(settings, store, "expand", [kw], only, workers)
+    summary = _execute(settings, store, "expand", [kw], only, workers, progress, cancel)
     summary.new_candidates = derived + summary.new_candidates
     return summary
 
 
-def scan(settings: Settings, store: Store, only: list[str] | None = None, workers: int = 4) -> RunSummary:
+def scan(settings: Settings, store: Store, only: list[str] | None = None, workers: int = 4,
+         progress: Progress | None = None, cancel: threading.Event | None = None) -> RunSummary:
     bootstrap(settings, store)
     idents = [i for i in store.identities("claimed") if i.kind != "keyword"]
-    return _execute(settings, store, "scan", idents, only, workers)
+    return _execute(settings, store, "scan", idents, only, workers, progress, cancel)
 
 
 def rescan(settings: Settings, store: Store, sources: list[str], identity_values: set[str],
-           workers: int = 4) -> RunSummary:
+           workers: int = 4, progress: Progress | None = None, cancel: threading.Event | None = None) -> RunSummary:
     """Re-run only these sources for only these (claimed) identities, e.g. to verify a removal."""
     bootstrap(settings, store)
     idents = [i for i in store.identities("claimed") if i.value in identity_values]
-    return _execute(settings, store, "recheck", idents, sources, workers)
+    return _execute(settings, store, "recheck", idents, sources, workers, progress, cancel)
