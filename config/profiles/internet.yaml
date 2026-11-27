@@ -20,7 +20,7 @@ brokers: []
 # Keys come from .env (see .env.example)
 keys: {}
 
-# The owner's Gmail through the official API (OAuth token in ~/.config/leakguard/gmail_token.json)
+# The owner's Gmail through the official API (the sign-in is kept in the system keyring: GMAIL_TOKEN)
 mail:
   backend: gmail
 

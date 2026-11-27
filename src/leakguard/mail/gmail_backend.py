@@ -1,4 +1,5 @@
-"""Gmail API backend (internet profile). OAuth on first use; the token stays in ~/.config/leakguard.
+"""Gmail API backend (internet profile). OAuth on first use; the sign-in (token) is kept in the secret store
+(system keyring, or the private fallback file), as GMAIL_TOKEN.
 
 Scopes: gmail.modify (read, label, spam, trash — never permanent delete), gmail.settings.basic (filters) and
 gmail.send (removal requests sent from the owner's address after --confirm). Adding a scope asks for consent once.
@@ -7,10 +8,12 @@ gmail.send (removal requests sent from the owner's address after --confirm). Add
 from __future__ import annotations
 
 import base64
+import json
 import os
 import time
 from pathlib import Path
 
+from .. import keystore
 from ..config import ConfigError, Settings
 from ..paths import USER_CONFIG
 from ..scope import ScopeGuard
@@ -20,7 +23,8 @@ from .rules import OwnerLists
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.settings.basic",
           "https://www.googleapis.com/auth/gmail.send"]
-TOKEN = USER_CONFIG / "gmail_token.json"
+TOKEN_NAME = "GMAIL_TOKEN"
+OLD_TOKEN = USER_CONFIG / "gmail_token.json"      # before the secret store: moved into it on first use
 LABELS = {"label": "LeakGuard/Review", "blocked": "LeakGuard/Blocked"}
 CHUNK = 20          # addresses per server-side filter (Gmail limits the criteria length)
 
@@ -29,6 +33,22 @@ BATCH = 20          # 20 gets = 100 units per batch...
 PAUSE = 0.6         # ...and a pause between batches keeps us well under the limit
 RETRIES = 5         # single calls: googleapiclient retries 429/5xx and 403 rateLimitExceeded with backoff
 SENT_SAMPLE = 300   # sent messages used to learn the owner's contacts
+
+
+def load_token() -> str:
+    """The saved Gmail sign-in, moving an old token file into the secret store first."""
+    st = keystore.store()
+    if OLD_TOKEN.exists():
+        if not st.get(TOKEN_NAME):
+            st.set(TOKEN_NAME, OLD_TOKEN.read_text())
+        if st.get(TOKEN_NAME):
+            OLD_TOKEN.unlink()
+    return st.get(TOKEN_NAME)
+
+
+def sign_out() -> bool:
+    """Forget the Gmail sign-in; the next Gmail command asks to sign in again (choose the account then)."""
+    return keystore.store().delete(TOKEN_NAME)
 
 
 class GmailBackend(MailBackend):
@@ -47,7 +67,7 @@ class GmailBackend(MailBackend):
 
         # Load with the scopes actually granted (stored in the token), not the ones we want: passing SCOPES here
         # would make an expired token ask Google for a scope never granted (invalid_scope).
-        creds = Credentials.from_authorized_user_file(str(TOKEN)) if TOKEN.exists() else None
+        creds = Credentials.from_authorized_user_info(json.loads(raw)) if (raw := load_token()) else None
         if creds and not creds.has_scopes(SCOPES):
             creds = None                       # a scope was added since consent: ask again
         if creds and creds.expired and creds.refresh_token:
@@ -61,10 +81,7 @@ class GmailBackend(MailBackend):
             if not secret.exists():
                 raise ConfigError(f"Gmail OAuth client file not found: {secret} (see README, phase 5 setup)")
             creds = InstalledAppFlow.from_client_secrets_file(str(secret), SCOPES).run_local_server(port=0)
-        TOKEN.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(TOKEN, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(creds.to_json())
+        keystore.store().set(TOKEN_NAME, creds.to_json())
         self.svc = build("gmail", "v1", credentials=creds, cache_discovery=False)
         self.users = self.svc.users()
         self._label_ids: dict[str, str] = {}

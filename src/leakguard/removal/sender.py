@@ -29,12 +29,13 @@ def send(settings: Settings, guard: ScopeGuard, msg: EmailMessage) -> str:
             raise RuntimeError(f"SMTP refused recipients: {refused}")
         return f"smtp {cfg['host']}:{cfg.get('port', 25)}"
     if how == "gmail":
-        from ..mail.gmail_backend import TOKEN, GmailBackend
+        from ..mail.gmail_backend import GmailBackend
         gm = GmailBackend(settings, guard)
         want, can = parseaddr(msg["From"])[1].lower(), gm.send_as()
         if want not in can:                # Gmail would quietly send it from the signed-in account instead
             raise DraftError(f"this request must come from {want}, but Gmail is signed in as {', '.join(sorted(can))}. "
-                             f"Delete {TOKEN} and run again to sign in as {want}, or send the draft yourself from it.")
+                             f"Run `leakguard keys forget GMAIL_TOKEN`, then run again and sign in as {want}, or send the draft "
+                             "yourself from it.")
         gid = gm.send(msg)
         return f"gmail message {gid} from {want}"
     raise ConfigError(f"profile {settings.profile}: removal.sender must be smtp or gmail")

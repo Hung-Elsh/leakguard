@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, config, engine, leaks, report
+from . import __version__, config, engine, keystore, leaks, report, service
 from .models import mask
-from .paths import CONFIG, USER_IDENTITY
-from .plugins import ALL_PLUGINS
-from .plugins.tools import ToolPlugin
-from .runner import ToolError, find_binary
+from .paths import USER_IDENTITY
 from .store import Store
 
 app = typer.Typer(help="Find, block and remove your own leaked personal data.", no_args_is_help=True)
@@ -22,8 +18,10 @@ console = Console()
 
 
 def _register_subcommands() -> None:
+    from .cli_keys import app as keys_app
     from .cli_remove import app as remove_app
     app.add_typer(remove_app, name="remove")
+    app.add_typer(keys_app, name="keys")
 
 ProfileOpt = typer.Option(None, "--profile", "-p", help="lab | internet (default: LEAKGUARD_PROFILE or lab)")
 SourceOpt = typer.Option(None, "--source", "-s", help="Only these sources (repeatable).")
@@ -80,7 +78,8 @@ def init(
                   "country": ""},
     }
     try:
-        path = config.write_identity(ident)
+        path = service.setup_identity(ident["keyword"], ident["emails"], ident["usernames"],
+                                      ident["owner"]["full_name"])
     except config.ConfigError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(2)
@@ -404,25 +403,17 @@ def report_cmd(profile: Optional[str] = ProfileOpt,
 @app.command()
 def doctor(profile: Optional[str] = ProfileOpt) -> None:
     """Setup check: external OSINT tools, and which sources can run in this profile (keys, allowed)."""
-    catalogue = json.loads((CONFIG / "tools.json").read_text())["tools"]
     table = Table(title="External tools")
     for col in ("Tool", "Phase", "Status", "Purpose"):
         table.add_column(col)
-    missing = []
-    for tool in catalogue:
-        try:
-            where = find_binary(*tool["detect"])
-        except ToolError:
-            where = None
-        status = f"[green]ok[/] {where}" if where else "[red]missing[/]"
-        table.add_row(tool["name"], str(tool["phase"]), status, tool["purpose"])
-        if not where:
-            missing.append(tool)
+    tools = service.tool_status()
+    for t in tools:
+        table.add_row(t.name, str(t.phase), f"[green]ok[/] {t.path}" if t.path else "[red]missing[/]", t.purpose)
     console.print(table)
-    if missing:
+    if missing := [t for t in tools if not t.path]:
         console.print("\n[bold]Install the missing tools (run these yourself):[/]")
-        for tool in missing:
-            console.print(f"  [cyan]{tool['name']}[/]: {tool['install']}", soft_wrap=True)
+        for t in missing:
+            console.print(f"  [cyan]{t.name}[/]: {t.install}", soft_wrap=True)
     try:
         s = config.load(profile)
     except config.ConfigError as e:
@@ -431,14 +422,14 @@ def doctor(profile: Optional[str] = ProfileOpt) -> None:
     t = Table(title=f"Sources ({s.profile})")
     for col in ("Source", "Handles", "Allowed", "Ready"):
         t.add_column(col)
-    for p in ALL_PLUGINS:
-        allowed = s.source(p.name).get("allowed", False)
-        missing_keys = [k for k in p.needs if not s.key(k)]
-        ready = "[red]missing " + ", ".join(missing_keys) + "[/]" if missing_keys else "[green]yes[/]"
-        if s.tools_mode == "fixtures" and isinstance(p, ToolPlugin):
+    for src in service.source_status(s):
+        ready = "[red]missing " + ", ".join(src.missing_keys) + "[/]" if src.missing_keys else "[green]yes[/]"
+        if src.fixtures:
             ready = "[cyan]fixtures[/]"
-        t.add_row(p.name, ", ".join(p.kinds), "yes" if allowed else "[red]no[/]", ready)
+        t.add_row(src.name, ", ".join(src.kinds), "yes" if src.allowed else "[red]no[/]", ready)
     console.print(t)
+    if not s.is_lab:
+        console.print(f"[dim]keys are kept in {keystore.store().where()} · `leakguard keys` lists them[/]")
 
 
 _register_subcommands()

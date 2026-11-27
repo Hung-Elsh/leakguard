@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from . import keystore
 from .paths import CONFIG, DATA, LAB_IDENTITY, ROOT, USER_IDENTITY
 
 PROFILES = ("lab", "internet")
@@ -105,13 +106,37 @@ class Settings:
         return self.profile == "lab"
 
     def key(self, name: str) -> str:
-        """API key: profile-defined (lab mocks) first, then the environment."""
-        return self.keys.get(name) or os.environ.get(name, "")
+        """A secret: profile-defined (lab mocks) first, then the environment (and a developer's .env), then the
+        secret store (system keyring, or the private fallback file). The lab never reads the owner's store."""
+        value = self.keys.get(name) or os.environ.get(name, "")
+        if not value and not self.is_lab:
+            value = keystore.store().get(name)
+        return value
+
+    def key_origin(self, name: str) -> str:
+        """Where a secret comes from: profile, environment, keyring, file, or '' (not set)."""
+        if self.keys.get(name):
+            return "profile"
+        if os.environ.get(name):
+            return "environment"
+        if not self.is_lab and keystore.store().get(name):
+            return keystore.store().backend
+        return ""
 
     def secret_values(self) -> list[str]:
-        """Every configured API key/token value, so messages can be scrubbed of them."""
-        names = {"HIBP_API_KEY", "INTELX_API_KEY", "GOOGLE_PSE_API_KEY", "BRAVE_API_KEY", "GITHUB_TOKEN", *self.keys}
-        return [v for v in (self.key(n) for n in names) if v and len(v) >= 6]
+        """Every configured secret value (and the refresh token inside the Gmail sign-in), so messages and logs
+        can be scrubbed of them."""
+        out = []
+        for n in {*keystore.KNOWN, *self.keys}:
+            v = self.key(n)
+            if n == "GMAIL_TOKEN" and v:
+                try:
+                    v = json.loads(v).get("refresh_token", "")
+                except ValueError:
+                    pass
+            if v and len(v) >= 6:
+                out.append(v)
+        return out
 
     def source(self, source_id: str) -> dict:
         return self.sources.get(source_id, {})
