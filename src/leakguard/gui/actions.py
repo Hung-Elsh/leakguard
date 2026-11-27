@@ -177,7 +177,10 @@ class ActionController:
         def done(result):
             text, next_check = result
             self.win.changed()
-            self.win.toast.show_message(wording.check_result(text, target, wording.day(next_check)))
+            words = wording.check_result(text, target, wording.day(next_check))
+            self.win.toast.show_message(words)
+            if words == TODO["gone"].format(target=target):
+                self.win.notifier.notify(wording.NOTIFY["removed"], words)
         self.win.run_job(run, done)
 
 

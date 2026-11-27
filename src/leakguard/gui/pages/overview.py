@@ -136,7 +136,7 @@ class OverviewPage(QScrollArea):
         for ax in self.chart.axes():
             self.chart.removeAxis(ax)
         points = [t for t in trend if t.get("open") is not None]
-        enough = len(points) >= 2
+        enough = len({t["ts"] for t in points}) >= 2               # a line needs two different moments
         self.chart_view.setVisible(enough)
         self.chart_empty.setVisible(not enough)
         if not enough:

@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLineEdit, QPlainTextEdit,
-                               QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLineEdit,
+                               QPlainTextEdit, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
 
 from .. import keystore, service, wording
-from ..wording import GHUNT, KEYS, SETTINGS, TOOLS
+from ..wording import AUTO, GHUNT, KEYS, SETTINGS, TOOLS
 from .actions import button
 from .widgets.cards import label
 
@@ -48,7 +48,8 @@ class SettingsDialog(QDialog):
         self.tabs = QTabWidget()
         self.tabs.addTab(_scroll(ServicesTab(win)), SETTINGS["services"])
         self.tabs.addTab(_scroll(ToolsTab(win)), SETTINGS["tools"])
-        self.tabs.setCurrentIndex(1 if tab == "tools" else 0)
+        self.tabs.addTab(_scroll(AutoTab(win)), AUTO["tab"])
+        self.tabs.setCurrentIndex({"tools": 1, "auto": 2}.get(tab, 0))
         lay.addWidget(self.tabs, 1)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         bb.rejected.connect(self.reject)
@@ -290,4 +291,53 @@ class GhuntDialog(QDialog):
             else:
                 self.note.setText(GHUNT["failed"])
                 self.win.show_details(GHUNT["failed"], detail)
+        self.win.run_job(run, done)
+
+
+class AutoTab(QWidget):
+    """The weekly check: one switch. On writes and enables a user-level timer; off disables it."""
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        lay = QVBoxLayout(self)
+        f, cl = _card()
+        self.switch = QCheckBox(AUTO["switch"])
+        self.switch.setStyleSheet("font-size: 12pt; font-weight: 600;")
+        cl.addWidget(self.switch)
+        cl.addWidget(label(AUTO["help"], "muted"))
+        self.status = label("", "muted")
+        cl.addWidget(self.status)
+        lay.addWidget(f)
+        lay.addStretch(1)
+        if win.settings.is_lab:
+            self.switch.setEnabled(False)
+            self.status.setText(AUTO["practice"])
+            return
+        on, nxt = service.weekly_status()
+        self.switch.setChecked(on)
+        self._show(on, nxt)
+        self.switch.toggled.connect(self._toggle)
+
+    def _show(self, on: bool, nxt: str) -> None:
+        self.status.setText((AUTO["on"].format(date=wording.day(nxt)) if nxt else AUTO["on_soon"]) if on
+                            else AUTO["off"])
+
+    def _toggle(self, on: bool) -> None:
+        self.switch.setEnabled(False)
+        profile = self.win.profile
+
+        def run(_progress, _cancel):
+            ok, detail = service.set_weekly(profile, on)
+            return ok, detail, service.weekly_status()
+
+        def done(result):
+            ok, detail, (now_on, nxt) = result
+            self.switch.setEnabled(True)
+            if not ok:
+                self.win.show_details(AUTO["failed"], detail)
+            self.switch.blockSignals(True)
+            self.switch.setChecked(now_on)
+            self.switch.blockSignals(False)
+            self._show(now_on, nxt)
         self.win.run_job(run, done)

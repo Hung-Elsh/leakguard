@@ -18,6 +18,7 @@ from .pages.cleanup import CleanupPage
 from .pages.found import FoundPage
 from .pages.mail import MailPage
 from .pages.overview import OverviewPage
+from .pages.reports import ReportsPage
 from .pages.soon import SoonPage
 from .pages.todo import TodoPage
 from .widgets.cards import Toast, label
@@ -112,7 +113,7 @@ class MainWindow(QMainWindow):
         self.pages = {}
         for name in PAGES:
             page = {"overview": OverviewPage, "todo": TodoPage, "found": FoundPage,
-                    "cleanup": CleanupPage, "mail": MailPage}.get(name)
+                    "cleanup": CleanupPage, "mail": MailPage, "reports": ReportsPage}.get(name)
             page = (page() if name == "overview" else page(self)) if page else SoonPage(wording.NAV[name])
             if name == "overview":
                 page.navigate.connect(self.show_page)
@@ -129,6 +130,8 @@ class MainWindow(QMainWindow):
         self.status = label("", "muted", wrap=False)
         self.statusBar().addWidget(self.status, 1)
         self.toast = Toast(central)
+        from .notify import Notifier
+        self.notifier = Notifier(self)
         self._menus()
 
         self.target.currentIndexChanged.connect(self._update_command)
@@ -262,6 +265,11 @@ class MainWindow(QMainWindow):
 
     def _done(self, res: service.CheckResult) -> None:
         self._finish()
+        words = " ".join(check_summary(res, self._first_run))
+        if res.serious:
+            self.notifier.notify(wording.NOTIFY["serious"], words, serious=True)
+        else:
+            self.notifier.notify(wording.NOTIFY["check_done"], words)
         self.toast.show_message(" ".join(check_summary(res, self._first_run)),
                                 "Details" if res.problems else "",
                                 (lambda: self._details(C["problems"].format(
@@ -322,6 +330,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self.job:                                       # finished runs are saved; the rest is dropped
             self.job.cancel.set()
+        self.notifier.hide()
         super().closeEvent(event)
 
     def resizeEvent(self, event) -> None:

@@ -111,3 +111,11 @@ def test_app_id_only_with_an_installed_desktop_entry(tmp_path, monkeypatch):
     (tmp_path / "applications").mkdir()
     (tmp_path / "applications" / "leakguard.desktop").write_text("[Desktop Entry]\n")
     assert app.desktop_entry_installed()
+
+
+def test_reports_page_builds_every_tab(qtbot, temp_data):
+    w = _lab_window(qtbot)
+    page = w.pages["reports"]
+    page.refresh()
+    assert page.tabs.count() == 6
+    assert [page.tabs.tabText(i) for i in range(6)][-1] == wording.REPORTS["tab_final"]
