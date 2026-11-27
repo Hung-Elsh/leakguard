@@ -306,7 +306,18 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
     `pipx install` (no admin rights; GHunt gets its crash fixes); tools that need `sudo apt` show the command to
     copy. The Google check has *Sign in...*: paste the code from the GHunt Companion extension (use a spare Google
     account); it's handed to `ghunt login` and never logged.
+  - *Automatic checks*: one switch, *Check for me every week*. On writes a user-level systemd timer (Mondays
+    around 09:00, `leakguard monitor`, the same files as `monitor --schedule weekly`) and enables it; off disables
+    it. No admin rights; it runs while you are logged in. Off by default.
   - The Overview shows *Make checks better* while a search service or extra check is missing.
+- **Reports:** *What was found* (by kind and seriousness, and what's gone), *Clean-up* (every step's history),
+  *Mail* (messages moved per week, and why), *Check health* (how each search service did the last time it ran,
+  in plain words; double-click for the full logged detail: error, HTTP status, the service's reply), *Over time*
+  (open, serious and gone after each check) and *Final report* (= `leakguard report --final`; *Hide my names and
+  addresses* = `--share`, refused if any of your details would be left in it; *Save as...* writes a private file).
+- **Notifications:** while the app runs, a tray icon (menu: open, quick check, quit) pops up a desktop message
+  when a check finishes, when something serious is found, and when a removal is confirmed, unless the window is
+  in front (then the message inside the app is enough).
 - **Practice mode:** `leakguard-app --practice` uses the lab profile: a made-up person, lab services only.
 - The safety rules are the CLI's: only claimed identities are checked, nothing is sent without your confirmation,
   keys stay in the system keyring.

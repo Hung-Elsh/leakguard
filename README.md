@@ -70,7 +70,9 @@ Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, tre
 with Undo); **Found** (everything found, searchable); **Clean-up** (every step, and adding a site we missed);
 **Mail** (connect with an app password: Gmail, Yahoo, iCloud or your own servers; check, then move what you saw);
 **Settings** (search-service keys, each tested before it's saved; extra checks with one-click installs and the
-Google check's sign-in). Emails, forms and mail moves happen only after a screen that shows exactly what happens.
+Google check's sign-in; a *Check every week* switch); **Reports** (what was found, the clean-up timeline, mail,
+check health, the trend, and the final report to save or share with your details hidden); desktop notifications
+from a tray icon. Emails, forms and mail moves happen only after a screen that shows exactly what happens.
 *View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
 
 ## Commands
@@ -108,4 +110,4 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
 | 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |
-| 6 | Desktop app (`native-app` branch) | G0-G3 done (window, Overview, To do, Found, Clean-up, Mail, Settings); G4 reports + notifications next |
+| 6 | Desktop app (`native-app` branch) | G0-G4 done (window, Overview, To do, Found, Clean-up, Mail, Settings, Reports, notifications); G5 "add a tool" next |
