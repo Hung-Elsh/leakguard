@@ -25,10 +25,13 @@ dependencies = [
 browser = ["playwright>=1.45"]
 gui = ["PySide6>=6.7"]           # the desktop app (phase 6)
 lab = ["flask>=3"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-qt>=4.4"]
 
 [project.scripts]
 leakguard = "leakguard.cli:app"
+
+[project.gui-scripts]
+leakguard-app = "leakguard.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
