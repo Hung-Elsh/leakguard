@@ -55,8 +55,10 @@ python3 scripts/patch_ghunt.py           # fixes GHunt 2.3.4 crashes (re-run aft
 ```
 
 ## Desktop app
-A native window (PySide6, in the style of Zenmap) for people who'd rather not use a terminal. No packages yet:
-build it from source, which also shows you exactly what it does.
+A native window (PySide6) for people who'd rather not use a terminal.
+
+### Install and run
+There are no packages yet: build it from source, which also shows you exactly what it does.
 ```bash
 git clone git@github.com:Hung-Elsh/leakguard.git && cd leakguard && git switch native-app
 python3 -m venv .venv && .venv/bin/pip install -e '.[gui,browser]'
@@ -65,17 +67,30 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[gui,browser]'
 .venv/bin/leakguard-app --add-to-menu    # optional: add LeakGuard to your application menu (your user only)
 ```
 If it doesn't start and mentions "xcb", install Qt's one missing system library: `sudo apt install libxcb-cursor0`.
-What's there so far: first-run setup; checks (quick or full, everything or one address; from the Overview, the
-File menu or the quick-access button) with progress and Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes); **To do**
-(is this you, what should we do with each find, your clean-up steps, what's waiting on sites; one click each,
-with Undo); **Found items** (everything found, searchable); **Clean-up** (every step, and adding a site we missed);
-**Mail** (connect with an app password: Gmail, Yahoo, iCloud or your own servers; check, then move what you saw);
-**Settings** (search-service keys, each tested before it's saved; extra checks with one-click installs and the
-Google check's sign-in; a *Check every week* switch); **Reports** (what was found, the clean-up timeline, mail,
-check health, the trend, and the final report to save or share with your details hidden); desktop notifications
-from a tray icon; **your own tools**: any command-line lookup tool, described once without Python
-([docs/ADD_A_TOOL.md](docs/ADD_A_TOOL.md)). Emails, forms and mail moves happen only after a screen that shows exactly what happens.
-*View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
+
+### What's in it
+| Page | What you do there |
+|---|---|
+| **Overview** | See how much is cleaned up, what needs you and what LeakGuard is waiting for; *Check now* or *Full check* |
+| **To do** | Answer everything in one place: is this you, what should we do with each find, your clean-up steps. One click each, with Undo |
+| **Found items** | Search everything found; change an answer |
+| **Clean-up** | Every step by state; add a site no check found |
+| **Mail** | Connect with an app password (Gmail, Yahoo, iCloud or your own servers); check, then move what you saw |
+| **Reports** | Summary chart, clean-up timeline, mail, check health, trend, and the final report (shareable with your details hidden) |
+
+Also:
+- **Menus:** File, Edit (Undo), View, Settings, Add-ons, Help.
+- **Quick actions:** the round button in the corner: quick or full check (everything or one address), check my
+  mail, To do.
+- **Settings:** search-service keys (tested before they're saved), extra checks with one-click installs, the
+  Google check's sign-in, and a *Check every week* switch.
+- **Your own tools:** any command-line lookup tool, described once without Python
+  ([docs/ADD_A_TOOL.md](docs/ADD_A_TOOL.md)).
+- **Notifications:** a tray icon tells you when a check finishes, something serious is found, or a removal is
+  confirmed.
+- **Command line:** *View → Show the command line* shows the same check as a `leakguard` command.
+
+Emails, forms and mail moves happen only after a screen that shows exactly what will happen.
 
 ## Commands
 All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `leakguard <command> --help` shows every option.

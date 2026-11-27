@@ -1,4 +1,4 @@
-"""The main window, laid out like Zenmap: what to check and how at the top, Start, progress, pages below."""
+"""The main window: menus, progress (with Stop) while a check runs, the pages, and quick access."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         if self.settings.is_lab:
             root.addWidget(label(wording.PRACTICE, "banner"))
 
-        # the equivalent command (View > Show the command line), like Zenmap's: the last check started
+        # the equivalent command (View > Show the command line): the last check started
         self.command = QLineEdit(command_for("quick", None, self.profile, self.settings))
         self.command.setReadOnly(True)
         self.command.setAccessibleName("The same check from the command line")
