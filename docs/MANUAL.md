@@ -14,6 +14,7 @@ identity, no internet) or `-p internet` (your real data). Examples use `-p inter
 8. [The lab](#8-the-lab)
 9. [Troubleshooting](#9-troubleshooting)
 10. [Data and privacy](#10-data-and-privacy)
+11. [Desktop app](#11-desktop-app)
 
 ---
 
@@ -256,3 +257,20 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
 - The claim gate: only claimed identities are scanned or cleaned. Nothing is sent or submitted without
   `--confirm`, and mail blocking is a dry run until `--apply`.
 - LeakGuard never logs in to third-party accounts with leaked or guessed passwords.
+
+## 11. Desktop app
+`leakguard-app` is the same engine in a window (install with `pip install -e '.[gui]'`; see the README).
+- **First run:** one *About you* screen (keyword, emails, optional usernames and name) and one button,
+  *Save & start first check*. Edit it later under *LeakGuard → About you*. It writes the same private file as
+  `leakguard init`.
+- **Checks:** pick *Check* (everything of yours, or one address or username) and *How* (Quick check: the fast
+  sources; Full check: every source). *Start check* shows progress in plain words; *Stop* drops the runs that
+  haven't started and keeps everything that finished. Same as `leakguard monitor [--quick]` or
+  `leakguard scan --identity VALUE` (*View → Show the command line* shows it).
+- **Overview:** how much is cleaned up, what needs you, what LeakGuard is waiting for (and the next follow-up
+  date), what's still open by seriousness, mail blocked this week, a trend and recent changes. The numbers are the
+  scorecard's (`leakguard report`).
+- **Practice mode:** `leakguard-app --practice` uses the lab profile: a made-up person, lab services only.
+- The safety rules are the CLI's: only claimed identities are checked, nothing is sent without your confirmation,
+  keys stay in the system keyring.
+

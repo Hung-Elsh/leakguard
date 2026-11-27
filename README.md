@@ -53,6 +53,21 @@ python3 scripts/patch_ghunt.py           # fixes GHunt 2.3.4 crashes (re-run aft
 .venv/bin/leakguard doctor -p internet   # tools installed? sources ready?
 ```
 
+## Desktop app
+A native window (PySide6, in the style of Zenmap) for people who'd rather not use a terminal. No packages yet:
+build it from source, which also shows you exactly what it does.
+```bash
+git clone git@github.com:Hung-Elsh/leakguard.git && cd leakguard && git switch native-app
+python3 -m venv .venv && .venv/bin/pip install -e '.[gui,browser]'
+.venv/bin/leakguard-app                  # first run: one "About you" screen, then the first check starts
+.venv/bin/leakguard-app --practice       # practice mode: a made-up person, lab services only
+.venv/bin/leakguard-app --add-to-menu    # optional: add LeakGuard to your application menu (your user only)
+```
+If it doesn't start and mentions "xcb", install Qt's one missing system library: `sudo apt install libxcb-cursor0`.
+What's there so far: first-run setup, Start check (quick or full, everything or one address) with progress and
+Stop, and the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes).
+*View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
+
 ## Commands
 All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `leakguard <command> --help` shows every option.
 
@@ -62,7 +77,7 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | | `identities` | List identities: claimed, candidate, rejected |
 | | `claim ID\|VALUE...` | Mark identities as yours, by ID or value; an unknown value is added as yours |
 | | `reject ID\|VALUE...` | Mark identities as not yours; an unknown value is added as rejected |
-| Discovery | `scan [--stage keyword\|identities] [-s SOURCE]` | Search the keyword, propose candidates, deep-scan claimed identities |
+| Discovery | `scan [--stage keyword\|identities] [-i IDENTITY] [-s SOURCE]` | Search the keyword, propose candidates, deep-scan claimed identities (`-i`: just one) |
 | | `findings [--status] [--verdict]` | List findings with IDs |
 | | `mark ID... --as open\|protect\|accepted\|false_positive` | Your verdict: clean up, keep and secure, no action, not yours |
 | | `report [--final [--share]]` | Markdown + JSON report with the scorecard; `--final`: readable cleanup report; `--share`: identities masked |
@@ -88,3 +103,4 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
 | 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |
+| 6 | Desktop app (`native-app` branch) | G0 foundations, G1 window + first run + Overview done; G2 decisions next |

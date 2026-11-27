@@ -26,7 +26,7 @@ run, because they contact real websites. Their fixtures are parsed instead.
 
 ## End-to-end run
 ```bash
-rm -f data/lab.sqlite
+rm -f ~/.local/share/leakguard/lab.sqlite*   # start the lab over (made-up data only)
 .venv/bin/leakguard scan --stage keyword -p lab   # 5 candidates
 .venv/bin/leakguard identities -p lab
 .venv/bin/leakguard claim 3 4 5 7 -p lab && .venv/bin/leakguard reject zorblat-fanclub -p lab   # IDs or values
@@ -35,15 +35,15 @@ rm -f data/lab.sqlite
 ```
 
 ## Mail blocking (GreenMail on 192.168.1.250)
-`mail_corpus.py` holds 22 messages for the fictional owner, each with its expected verdict: 10 legit
-(including look-alikes such as a real "Google" security alert and a security-code mail), 8 spam
-(sextortion, phishing, failed DMARC, scams, mass BCC), 2 on the owner blocklist and 2 sign-up newsletters
-first seen after the leak. The owner lists are in `mail_rules.yaml`.
+`mail_corpus.py` holds 27 messages for the fictional owner, each with its expected verdict: 11 to keep
+(including look-alikes such as a real "Google" security alert and a security-code mail), 11 spam
+(sextortion, phishing, failed DMARC, scams, mass BCC), 2 on the owner blocklist (trash) and 3 sign-up
+newsletters first seen after the leak (review). The owner lists are in `mail_rules.yaml`.
 
 ```bash
 .venv/bin/python lab/seed_mail.py --reset   # empty the lab mailbox, send the corpus
 .venv/bin/leakguard block -p lab            # dry run: shows the verdicts, changes nothing
-.venv/bin/leakguard block -p lab --apply    # moves: Junk 8, Trash 2, LeakGuard.Review 2, INBOX keeps 10
+.venv/bin/leakguard block -p lab --apply    # moves: Junk 11, Trash 2, LeakGuard.Review 3, INBOX keeps 11
 ```
 `tests/test_classifier.py` checks the same corpus offline.
 
