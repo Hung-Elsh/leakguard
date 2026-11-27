@@ -75,4 +75,6 @@ class ScopeGuard:
         if self.s.is_lab:
             raise ScopeError(f"[lab] {tool} contacts real websites; lab uses fixtures only")
         if not self.s.source(tool).get("allowed"):
-            raise ScopeError(f"[internet] tool {tool!r} is not allowed in sources.json")
+            from . import custom_tools
+            if not custom_tools.is_enabled(tool):         # your own tool runs only while switched on
+                raise ScopeError(f"[internet] tool {tool!r} is not allowed in sources.json")

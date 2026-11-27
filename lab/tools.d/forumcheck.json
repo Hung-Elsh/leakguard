@@ -1,0 +1,19 @@
+{
+  "id": "forumcheck",
+  "name": "Forum check (example)",
+  "about": "Finds forum accounts made with your email. A practice example of a tool you add yourself.",
+  "checks": ["email"],
+  "command": ["forumcheck", "--json", "{value}"],
+  "output": {
+    "format": "json",
+    "items": "results",
+    "match": {"field": "exists", "equals": true},
+    "title": "Account on {site}",
+    "url": "{url}",
+    "site": "{site}"
+  },
+  "category": "account",
+  "severity": "low",
+  "timeout": 120,
+  "install": "(practice example: there is no real forumcheck program)"
+}

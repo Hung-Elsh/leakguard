@@ -143,14 +143,14 @@ def rerate(settings: Settings, store: Store) -> int:
 def run(settings: Settings, store: Store, sources: list[str] | None = None, quick: bool = False,
         workers: int = 4, progress: engine.Progress | None = None,
         cancel: threading.Event | None = None) -> MonitorResult:
-    from .plugins import ALL_PLUGINS
+    from .plugins import active
     from .removal import tracker
 
     res = MonitorResult(started=now())
     res.rerated = rerate(settings, store)
     before = store.finding_states()
     before_actions = {a["id"]: a["state"] for a in store.actions()}
-    only = sources or ([p.name for p in ALL_PLUGINS if p.name not in SLOW_TOOLS] if quick else None)
+    only = sources or ([p.name for p in active(settings) if p.name not in SLOW_TOOLS] if quick else None)
 
     summaries = [engine.expand(settings, store, only, workers, progress, cancel)]
     if not summaries[0].cancelled:

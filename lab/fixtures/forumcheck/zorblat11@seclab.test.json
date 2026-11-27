@@ -1,0 +1,5 @@
+{"query": "zorblat11@seclab.test", "checked": 3, "results": [
+  {"site": "LabForum2", "url": "http://127.0.0.1:5055/forum/u/zorblat_x", "exists": true, "joined": "2019"},
+  {"site": "QuietBoard", "url": "http://127.0.0.1:5055/forum/u/zorblat", "exists": true, "profile": {"name": "Zor"}},
+  {"site": "NoSuchForum", "url": "", "exists": false}
+]}

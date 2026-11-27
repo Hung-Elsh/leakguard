@@ -15,7 +15,7 @@ import httpx
 from .config import Settings
 from .models import Candidate, Identity, PluginResult, redact
 from .net import Http
-from .plugins import ALL_PLUGINS, Context, Plugin, SkipSource
+from .plugins import Context, Plugin, SkipSource, active
 from .runner import ToolError
 from .scope import ScopeError, ScopeGuard
 from .store import Store, now
@@ -145,7 +145,7 @@ def _execute(settings: Settings, store: Store, stage: str, idents: list[Identity
     scan_id = store.start_scan(stage)
     summary = RunSummary(scan_id)
     secrets = settings.secret_values()
-    jobs = [(p, i) for i in idents for p in _select(ALL_PLUGINS, only) if i.kind in p.kinds]
+    jobs = [(p, i) for i in idents for p in _select(active(settings), only) if i.kind in p.kinds]
 
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
