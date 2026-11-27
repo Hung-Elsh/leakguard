@@ -224,7 +224,7 @@ def action_title(a) -> str:
 
 
 # ---- the desktop app's screens -------------------------------------------------------------------
-NAV = {"overview": "Overview", "todo": "To do", "found": "Found", "cleanup": "Clean-up", "mail": "Mail",
+NAV = {"overview": "Overview", "todo": "To do", "found": "Found items", "cleanup": "Clean-up", "mail": "Mail",
        "reports": "Reports"}
 SOON = "This part of the app arrives in the next update. Everything it will show is already being recorded."
 
@@ -294,6 +294,7 @@ OVERVIEW = {
     "recent": "Recent changes",
     "recent_none": "Nothing yet. Start a check to begin.",
     "never": "No check yet",
+    "check_now": "Check now", "check_full": "Full check", "checking": "Checking...",
     "last_check": "Last check: {when}",
 }
 EVENT = {"found": "Found: {text}", "requested": "Request sent: {text}", "acknowledged": "The site replied: {text}",
@@ -417,7 +418,7 @@ STEPS = {"title": "How to do it", "close": "Close", "done": "I've done it"}
 FOUND = {
     "intro": "Everything the checks found. Double-click a row to see it and change your answer.",
     "search": "Search...",
-    "show_open": "Still there", "show_all": "Everything", "show_gone": "Gone",
+    "show_open": "Still there", "show_all": "All", "show_gone": "Gone", "search_go": "Search",
     "col_seriousness": "Seriousness", "col_what": "What", "col_where": "Where", "col_first": "First seen",
     "col_status": "Now", "col_answer": "Your answer",
     "status_there": "Still there", "status_gone": "Gone",
@@ -556,7 +557,8 @@ MAIL_RULE = {
 SETTINGS = {"title": "Settings", "services": "Search services", "tools": "Extra checks", "about_you": "About you...",
             "close": "Close", "better": "Make checks better",
             "better_keys": "{count} search {services}", "better_tools": "{count} extra {checks}",
-            "better_line": "{what} can still be added.", "and": "and",
+            "better_line": "{what} can still be added: open the Settings menu at the top to set them up.",
+            "and": "and",
             "better_button": "Set up"}
 KEYS = {
     "intro": "Each one lets LeakGuard look in more places. All of them are optional.",
@@ -640,9 +642,11 @@ GHUNT = {
 # ---- Reports -------------------------------------------------------------------------------------------
 REPORTS = {
     "intro": "A closer look at what was found, what was done, and how the checks are working.",
-    "tab_found": "What was found", "tab_cleanup": "Clean-up", "tab_mail": "Mail", "tab_health": "Check health",
+    "tab_found": "Summary", "tab_cleanup": "Clean-up", "tab_mail": "Mail", "tab_health": "Check health",
     "tab_trend": "Over time", "tab_final": "Final report",
-    "found_help": "Everything still counted, by kind and seriousness. Gone means a check no longer sees it.",
+    "found_help": "Everything still counted. Gone means a check no longer sees it.",
+    "by_kind": "By kind", "by_seriousness": "By seriousness", "by_status": "Still there or gone",
+    "still_there": "Still there", "slice": "{name}: {count}",
     "gone": "Gone", "answers": "Your answers: {text}.", "unanswered": "{count} not answered yet (see To do).",
     "cleanup_help": "Every step taken, newest first.",
     "cleanup_counts": "{out} waiting for sites · {gone} confirmed gone · {done} done by you · {skipped} skipped",
@@ -679,4 +683,78 @@ NOTIFY = {
     "check_done": "Check finished",
     "serious": "Something serious was found",
     "removed": "Removal confirmed",
+}
+
+
+# ---- Your own tools (Settings > Extra checks; docs/ADD_A_TOOL.md) ---------------------------------------
+# For people who already run command-line tools, so it names JSON and patterns (exempt from the jargon test).
+CUSTOM = {
+    "section": "Your own tools",
+    "section_help": "Tools you added yourself. Each one runs in your checks while it's switched on.",
+    "none": "None yet. You can add any tool that prints its results. See the guide: docs/ADD_A_TOOL.md.",
+    "add": "Add a tool...", "edit": "Change...", "remove": "Remove", "on": "Switched on",
+    "removed": "Removed {name}.", "saved": "Saved {name}. It runs in your next check.",
+    "practice_example": "Practice example: runs only in practice mode, on recorded output.",
+    "title": "Add a tool",
+    "intro": "Describe the tool once: what it checks, the command, and how it prints results. Test it on your "
+             "email, then save. It runs with the same safety rules as the built-in tools.",
+    "name": "Name", "about": "What it finds (one sentence)",
+    "checks": "What it checks", "check_email": "Email addresses", "check_username": "Usernames",
+    "command": "Command",
+    "command_help": "Exactly what you would type in a terminal. Write {value} where the email address or "
+                    "username goes. It runs directly, not through a shell.",
+    "format": "How it prints results",
+    "format_json": "One JSON document", "format_jsonl": "One JSON result per line", "format_lines": "Lines of text",
+    "items": "The list of results is at (optional)",
+    "items_help": "Where the results are inside the JSON, e.g. results or data.accounts. Empty: the whole output.",
+    "match": "Only results where (optional)", "equals": "equals",
+    "pattern": "Pattern",
+    "pattern_help": "A regular expression with named parts, e.g.  \\[\\+\\] (?P<site>\\S+): (?P<url>\\S+)",
+    "result_title": "Title", "result_link": "Link (optional)", "result_site": "Site (optional)",
+    "fields_help": "Use {name} for a part of each result, e.g.  Account on {site}  and  {url}.",
+    "kind": "Kind of find", "seriousness": "Seriousness",
+    "test": "Test on my email", "testing": "Running it on {value}...",
+    "test_found": "Found {count} with {value}:", "test_nothing": "It ran, and found nothing for {value}.",
+    "test_failed": "It didn't run. The details are saved.",
+    "test_practice": "Practice mode doesn't run tools. This shows what the recorded example output gives.",
+    "save": "Save", "cancel": "Cancel",
+    "not_installed": "{program} isn't on this computer. Install it first, or give its full path.",
+    "bad_id": "The name needs at least two letters or numbers.",
+    "taken": "{name} is already a built-in check. Pick another name.",
+    "no_name": "Give the tool a name.",
+    "no_checks": "Tick what it checks: email addresses, usernames, or both.",
+    "no_command": "Enter the command.",
+    "no_value": "Write {value} in the command where the email address or username goes.",
+    "bad_program": "Give the program's name, or its full path starting with / or ~.",
+    "no_format": "Choose how it prints results.",
+    "pattern_names": "The pattern needs named parts, like (?P<site>...).",
+    "bad_pattern": "The pattern isn't a valid regular expression.",
+    "no_title": "Enter a title for each result.",
+    "no_category": "Choose the kind of find.",
+    "no_severity": "Choose how serious a find is.",
+    "bad_timeout": "The time limit must be between 10 seconds and an hour.",
+}
+
+
+# ---- menus and quick access --------------------------------------------------------------------------
+MENU = {
+    "file": "&File", "edit": "&Edit", "view": "&View", "settings": "&Settings", "addons": "&Add-ons",
+    "help": "&Help",
+    "quick": "Start a quick check", "full": "Start a full check", "mail": "Check my mail",
+    "report": "Save the final report...", "quit": "Quit",
+    "undo": "Undo", "find": "Find in found items",
+    "command": "Show the command line (advanced)", "refresh": "Refresh",
+    "about_you": "About you...", "services": "Search services...", "tools": "Extra checks...",
+    "auto": "Automatic checks...", "mail_connection": "Mail connection...",
+    "add_tool": "Add a tool...", "my_tools": "Your own tools...", "tool_guide": "How to add a tool",
+    "manual": "User manual", "about": "About LeakGuard",
+    "about_text": "LeakGuard {version}\n\nFinds, blocks and removes your own leaked personal data.\n"
+                  "Everything stays on this computer.",
+    "nothing_to_undo": "Nothing to undo.",
+}
+QUICK = {
+    "button": "Quick actions", "title": "Quick actions", "target": "Check:",
+    "quick": "Quick check", "full": "Full check", "mail": "Check my mail", "todo": "Open To do ({count})",
+    "todo_none": "Open To do", "running": "A check is running: {text}", "stop": "Stop the check",
+    "close": "Close",
 }

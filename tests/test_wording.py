@@ -23,9 +23,13 @@ def _walk(where, value):
         yield where, value
 
 
+# Adding your own tool is for people who already run command-line tools: it has to say JSON and pattern.
+TECHNICAL = {"CUSTOM"}
+
+
 def _texts():
     for name in dir(wording):
-        if name.isupper():
+        if name.isupper() and name not in TECHNICAL:
             yield from _walk(name, getattr(wording, name))
 
 
