@@ -16,6 +16,7 @@ from . import theme, worker
 from .actions import ActionController
 from .pages.cleanup import CleanupPage
 from .pages.found import FoundPage
+from .pages.mail import MailPage
 from .pages.overview import OverviewPage
 from .pages.soon import SoonPage
 from .pages.todo import TodoPage
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
         bar.addWidget(label("How:", wrap=False))
         self.kind = QComboBox()
         self.kind.setAccessibleName("How to check")
-        for k in service.CHECK_KINDS:
+        for k in (*service.CHECK_KINDS, "mail"):
             self.kind.addItem(wording.CHECK_KIND[k], k)
             self.kind.setItemData(self.kind.count() - 1, wording.CHECK_KIND_HELP[k], Qt.ItemDataRole.ToolTipRole)
         bar.addWidget(self.kind)
@@ -72,6 +73,12 @@ class MainWindow(QMainWindow):
         self.start_btn.setShortcut(QKeySequence("Ctrl+R"))
         self.start_btn.clicked.connect(self._start_or_stop)
         bar.addWidget(self.start_btn)
+        gear = QPushButton("⚙")
+        gear.setToolTip(wording.SETTINGS["title"])
+        gear.setAccessibleName(wording.SETTINGS["title"])
+        gear.setFixedWidth(36)
+        gear.clicked.connect(self.open_settings)
+        bar.addWidget(gear)
         root.addLayout(bar)
 
         # the equivalent command (Advanced), like Zenmap's command line
@@ -105,10 +112,11 @@ class MainWindow(QMainWindow):
         self.pages = {}
         for name in PAGES:
             page = {"overview": OverviewPage, "todo": TodoPage, "found": FoundPage,
-                    "cleanup": CleanupPage}.get(name)
+                    "cleanup": CleanupPage, "mail": MailPage}.get(name)
             page = (page() if name == "overview" else page(self)) if page else SoonPage(wording.NAV[name])
             if name == "overview":
                 page.navigate.connect(self.show_page)
+                page.setup.connect(self.open_settings)
             self.pages[name] = page
             self.stack.addWidget(page)
             self.nav.addItem(QListWidgetItem(wording.NAV[name]))
@@ -133,6 +141,8 @@ class MainWindow(QMainWindow):
         about = QAction("About you...", self, triggered=self._edit_identity)
         about.setEnabled(not self.settings.is_lab)          # practice mode uses its made-up person
         m.addAction(about)
+        m.addAction(QAction(wording.SETTINGS["title"] + "...", self, shortcut=QKeySequence("Ctrl+,"),
+                            triggered=self.open_settings))
         m.addSeparator()
         m.addAction(QAction("Quit", self, shortcut=QKeySequence.StandardKey.Quit, triggered=self.close))
         v = self.menuBar().addMenu("&View")
@@ -176,7 +186,10 @@ class MainWindow(QMainWindow):
         kind, ident = self.kind.currentData(), self.target.currentData()
         self.kind_help.setText(wording.CHECK_KIND_HELP.get(kind, ""))
         p = ["-p", self.profile]
-        if ident:
+        self.target.setEnabled(kind != "mail" and not self.job)
+        if kind == "mail":
+            cmd = ["leakguard", "block", *p]
+        elif ident:
             cmd = ["leakguard", "scan", "--identity", ident, *p]
             if kind == "quick":
                 cmd += [a for s in ALL_PLUGINS if s.name not in monitor.SLOW_TOOLS for a in ("-s", s.name)]
@@ -200,6 +213,10 @@ class MainWindow(QMainWindow):
         if kind:
             self.kind.setCurrentIndex(self.kind.findData(kind))
         kind, ident, profile = self.kind.currentData(), self.target.currentData(), self.profile
+        if kind == "mail":                                # the mail page runs it and shows the preview
+            self.show_page("mail")
+            self.pages["mail"].check()
+            return
         self._first_run = first_run
 
         def run(progress, cancel):
@@ -255,6 +272,12 @@ class MainWindow(QMainWindow):
     def _failed(self, detail: str) -> None:
         self._finish()
         self.toast.show_message(C["failed"], "Details", lambda: self._details(C["failed"], detail), seconds=20)
+
+    def open_settings(self, tab: str = "services") -> None:
+        from .settings import SettingsDialog
+        SettingsDialog(self, tab if isinstance(tab, str) else "services").exec()
+        self.settings = config.load(self.profile)        # keys may have changed
+        self.changed()
 
     def changed(self) -> None:
         """Something was answered or moved on: every page shows the new state. Deferred until the click that

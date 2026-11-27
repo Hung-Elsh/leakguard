@@ -10,11 +10,13 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollA
 from ... import service, wording
 from ...wording import OVERVIEW as T
 from .. import theme
+from ..actions import button
 from ..widgets.cards import Card, Ring, label
 
 
 class OverviewPage(QScrollArea):
     navigate = Signal(str)                      # a page name from wording.NAV
+    setup = Signal()                            # "Make checks better": open Settings
 
     def __init__(self):
         super().__init__()
@@ -42,6 +44,18 @@ class OverviewPage(QScrollArea):
         words.addStretch(1)
         h.addLayout(words, 1)
         lay.addWidget(hero)
+
+        self.better = QFrame()
+        self.better.setObjectName("card")
+        bl = QHBoxLayout(self.better)
+        bl.setContentsMargins(16, 10, 16, 10)
+        bl.addWidget(label(wording.SETTINGS["better"], "title", wrap=False))
+        self.better_line = label("", "muted")
+        bl.addWidget(self.better_line, 1)
+        better_btn = button(wording.SETTINGS["better_button"])
+        better_btn.clicked.connect(self.setup)
+        bl.addWidget(better_btn)
+        lay.addWidget(self.better)
 
         grid = QGridLayout()
         grid.setSpacing(12)
@@ -106,6 +120,14 @@ class OverviewPage(QScrollArea):
             self.card_mail.set(str(ov.mail_blocked_7d))
         else:
             self.card_mail.set("-", T["mail_none"])
+        self.better.setVisible(bool(ov.keys_missing or ov.tools_missing))
+        S = wording.SETTINGS
+        parts = ([S["better_keys"].format(count=ov.keys_missing, services=wording.plural(ov.keys_missing, "service"))]
+                 if ov.keys_missing else []) + \
+                ([S["better_tools"].format(count=ov.tools_missing, checks=wording.plural(ov.tools_missing, "check"))]
+                 if ov.tools_missing else [])
+        what = f" {S['and']} ".join(parts)
+        self.better_line.setText(S["better_line"].format(what=what[:1].upper() + what[1:]) if parts else "")
         self._chart(ov.trend)
         self._recent(ov.recent)
 

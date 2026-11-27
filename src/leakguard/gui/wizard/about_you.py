@@ -66,7 +66,7 @@ class AboutYouDialog(QDialog):
         lay.addWidget(self.error)
         lay.addWidget(label(T["privacy"], "muted"))
         buttons = QDialogButtonBox()
-        self.save = QPushButton(T["save_first"] if first_run else T["save"])
+        self.save = QPushButton((T["save_first"] if first_run else T["save"]).replace("&", "&&"))   # not a shortcut
         self.save.setObjectName("primary")
         self.save.setDefault(True)
         buttons.addButton(self.save, QDialogButtonBox.ButtonRole.AcceptRole)
