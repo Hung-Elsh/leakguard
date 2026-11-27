@@ -51,8 +51,8 @@ def _evidence(findings) -> list[dict]:
 
 def render(settings: Settings, store: Store, action_id: int) -> tuple[EmailMessage, Path]:
     a = store.action(action_id)
-    if a["method"] != "email" or not a["template"]:
-        raise DraftError(f"action {action_id} is '{a['method']}', not an email request")
+    if not a["template"]:                       # a manual step that came from an email request keeps its text,
+        raise DraftError(f"action {action_id} is '{a['method']}', not an email request")   # to copy into a page
     has_address = bool(a["contact"]) and "@" in a["contact"]       # no address yet: still draftable (paste into a
                                                                      # contact form); `send` refuses it
     findings = store.findings_by_ids(json.loads(a["finding_ids"] or "[]"))

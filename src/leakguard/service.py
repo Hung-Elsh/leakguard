@@ -55,8 +55,8 @@ class Todo:
 
     @property
     def count(self) -> int:
-        """What needs the owner (waiting items don't)."""
-        return len(self.candidates) + len(self.review) + len(self.your_turn)
+        """What needs the owner, counted as the questions To do shows (waiting items don't count)."""
+        return len(self.candidates) + len(review_groups(self.review)) + len(self.your_turn)
 
 
 def todo(settings: config.Settings, store: Store) -> Todo:
@@ -78,10 +78,6 @@ def decide_identities(settings: config.Settings, store: Store, tokens: list[str]
     """'Yes, it's me' / 'No' for one or many identities (IDs or values; an unknown value is added)."""
     status = "claimed" if yours else "rejected"
     return [identities.decide(settings, store, str(t), status, proof or "owner (desktop app)") for t in tokens]
-
-
-def set_verdict(store: Store, finding_ids: list[str], verdict: str, note: str = "") -> list:
-    return store.mark(list(finding_ids), verdict, note)
 
 
 # ---- checks ----------------------------------------------------------------------------------------
@@ -244,3 +240,122 @@ def forget_key(store: Store, name: str) -> bool:
         raise ValueError(f"unknown key {name!r}; known: {', '.join(keystore.KNOWN)}")
     store.forget_connection(name)
     return keystore.store().delete(name)
+
+
+# ---- To do: grouped questions, answers and undo ------------------------------------------------------
+SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3}
+URL_GROUPED = ("web_page", "paste", "code")      # one page: one question, whoever it mentions
+
+
+@dataclass
+class ReviewGroup:
+    """One question in To do: the same site, page or leak found for several identities or by several tools."""
+    key: tuple
+    category: str
+    severity: str
+    rows: list
+
+    @property
+    def finding_ids(self) -> list[str]:
+        return [r["id"] for r in self.rows]
+
+    @property
+    def identities(self) -> list[str]:
+        return sorted({r["identity"] for r in self.rows})
+
+
+def review_groups(findings) -> list[ReviewGroup]:
+    from . import wording
+    from .removal.catalog import site_key
+    groups: dict[tuple, ReviewGroup] = {}
+    for f in findings:
+        cat = f["category"]
+        if cat == "leak":                                # one removal request per address covers them all
+            key = (cat, f["identity"])
+        elif cat in URL_GROUPED and f["url"]:
+            key = (cat, f["url"].lower().rstrip("/"))
+        else:                                            # the same site however a tool spells it
+            key = (cat, site_key(wording.site_of(f)) or (f["title"] or "").lower())
+        g = groups.setdefault(key, ReviewGroup(key, cat, f["severity"], []))
+        g.rows.append(f)
+        if SEVERITY_RANK.get(f["severity"], 0) > SEVERITY_RANK.get(g.severity, 0):
+            g.severity = f["severity"]
+    return sorted(groups.values(), key=lambda g: (-SEVERITY_RANK.get(g.severity, 0), g.category, g.key))
+
+
+def set_verdict(store: Store, finding_ids: list[str], verdict: str, note: str = "") -> list[tuple]:
+    """Record the owner's answer; returns what was there before (for Undo)."""
+    ids = list(finding_ids)
+    before = [(r["id"], r["disposition"], r["note"], r["reviewed"]) for r in
+              store.db.execute(f"SELECT id, disposition, note, reviewed FROM findings WHERE id IN "
+                               f"({','.join('?' * len(ids))})", ids)] if ids else []
+    store.mark(ids, verdict, note)
+    return before
+
+
+def undo_verdicts(store: Store, before: list[tuple]) -> None:
+    for fid, disposition, note, reviewed in before:
+        store.db.execute("UPDATE findings SET disposition=?, note=?, reviewed=? WHERE id=?",
+                         (disposition, note, reviewed, fid))
+    store.db.commit()
+
+
+def undo_identities(settings: config.Settings, store: Store, before: list[tuple[int, str]]) -> None:
+    """Put identities back to their earlier status (e.g. candidate), keeping the private identity file in step."""
+    for ident_id, status in before:
+        cur = store.get_identity(ident_id)
+        store.decide(ident_id, status)
+        if (cur.status == "claimed") != (status == "claimed"):
+            identities._sync_identity_file(settings, cur.value, cur.kind, status == "claimed")
+
+
+# ---- clean-up actions (shared with `leakguard remove set / add`) -------------------------------------
+def record_progress(store: Store, action_id: int, state: str, note: str = ""):
+    """Move an action on (done, skipped, requested, acknowledged, removed...) and schedule its next check."""
+    from .removal import tracker
+    a = store.action(action_id)
+    if state == "done" and a["state"] in ("requested", "acknowledged"):
+        state = "removed"                                # finished something already requested
+    verifiable = a["finding_ids"] != "[]" and a["kind"] not in tracker.OWNER_CONFIRMED
+    extra = {}
+    if state in ("requested", "acknowledged") or (state in ("done", "removed") and verifiable):
+        extra["next_check"] = tracker._due(a["method"])
+    elif state in ("done", "removed", "skipped", "verified", "planned"):
+        extra["next_check"] = None
+    return store.set_action_state(action_id, state, note or "set by owner", **extra)
+
+
+def set_contact(store: Store, action_id: int, contact: str):
+    """A contact the owner checked: an email address makes it an email request, a page makes it manual."""
+    from .removal.planner import TEMPLATES
+    contact = contact.strip()
+    if not contact:
+        raise ValueError("empty contact")
+    a = store.action(action_id)
+    is_email = "@" in contact and "/" not in contact
+    if not is_email and "://" not in contact:
+        contact = "https://" + contact                   # "example.com/privacy" typed without the scheme
+    method = "email" if is_email else ("manual" if a["method"] == "email" else a["method"])
+    template = a["template"] or (TEMPLATES.get(a["kind"]) if method == "email" else None)
+    store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=?, template=? WHERE id=?",
+                     (contact, method, template, action_id))
+    store.db.commit()
+    return store.set_action_state(action_id, a["state"], f"contact set by owner: {contact}")
+
+
+def add_site(settings: config.Settings, store: Store, target: str, identity: str, url: str = "", email: str = "",
+             why: str = "", kind: str = "account_delete") -> tuple[int, bool]:
+    """An action for something no scan found (an account the owner knows about)."""
+    from .removal.catalog import Catalog, site_key
+    e = Catalog(settings).lookup(target)
+    contact, verified = ((email, True) if email else (url, True) if url
+                         else ((e.email or e.url, e.verified) if e else ("", False)))
+    method = "email" if email or (e and e.method == "email" and not url) else "manual"
+    aid, created = store.upsert_action({
+        "key": f"manual:{site_key(target)}", "kind": kind, "method": method, "target": e.name if e else target,
+        "title": f"Delete / deactivate the account on {e.name if e else target}", "contact": contact or None,
+        "contact_verified": verified, "template": "account_deletion" if method == "email" else None,
+        "finding_ids": [], "identities": [identity],
+        "steps": (e.steps if e else "") or "Find the site's account-deletion page or privacy contact."})
+    store.set_action_state(aid, store.action(aid)["state"], f"added by owner: {why or 'known account'}")
+    return aid, created

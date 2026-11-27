@@ -16,10 +16,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import config
+from . import config, service
 from .removal import drafts, tracker
 from .removal.catalog import ensure_jdm
-from .removal.planner import TEMPLATES
 from .store import ACTION_STATES, Store, now
 
 app = typer.Typer(help="Removal workflow: plan from findings, act, verify.", no_args_is_help=True)
@@ -148,25 +147,13 @@ def set_action(action_id: int,
     try:
         a = store.action(action_id)
         if contact:
-            method = "email" if "@" in contact and "/" not in contact else ("manual" if a["method"] == "email" else a["method"])
-            template = a["template"] or (TEMPLATES.get(a["kind"]) if method == "email" else None)
-            store.db.execute("UPDATE actions SET contact=?, contact_verified=1, method=?, template=? WHERE id=?",
-                             (contact, method, template, action_id))
-            store.db.commit()
-            store.set_action_state(action_id, a["state"], f"contact set by owner: {contact}")
+            service.set_contact(store, action_id, contact)
             console.print(f"[green]contact set[/]: {contact}")
             a = store.action(action_id)
         if state:
-            if state == "done" and a["state"] in ("requested", "acknowledged"):
-                state = "removed"                      # you finished something already requested
-            verifiable = a["finding_ids"] != "[]" and a["kind"] not in tracker.OWNER_CONFIRMED
-            extra = {}
-            if state in ("requested", "acknowledged") or (state in ("done", "removed") and verifiable):
-                extra["next_check"] = tracker._due(a["method"])
-            elif state in ("done", "removed", "skipped", "verified"):
-                extra["next_check"] = None
-            a = store.set_action_state(action_id, state, note or "set by owner", **extra)
-            hint = " Run [cyan]leakguard remove check[/] later to verify." if extra.get("next_check") and state in ("done", "removed") else ""
+            a = service.record_progress(store, action_id, state, note)
+            hint = (" Run [cyan]leakguard remove check[/] later to verify."
+                    if a["next_check"] and a["state"] in ("done", "removed") else "")
             console.print(f"#{action_id} -> [{STATE_COLOR[a['state']]}]{a['state']}[/].{hint}")
         elif note and not contact:
             store.set_action_state(action_id, a["state"], note)
@@ -184,18 +171,9 @@ def add_action(target: str = typer.Argument(..., help="Site or service, e.g. 'Zi
                kind: str = typer.Option("account_delete", help="account_delete | data_erasure | manual"),
                profile: Optional[str] = ProfileOpt) -> None:
     """Add an action for something no scan found (e.g. an account you know you have)."""
-    from .removal.catalog import Catalog, site_key
     s, store = _open(profile)
-    e = Catalog(s).lookup(target)
-    contact, verified = (email, True) if email else (url, True) if url else ((e.email or e.url, e.verified) if e else ("", False))
-    method = "email" if email or (e and e.method == "email" and not url) else "manual"
-    aid, created = store.upsert_action({
-        "key": f"manual:{site_key(target)}", "kind": kind, "method": method, "target": e.name if e else target,
-        "title": f"Delete / deactivate the account on {e.name if e else target}", "contact": contact or None,
-        "contact_verified": verified, "template": "account_deletion" if method == "email" else None,
-        "finding_ids": [], "identities": [identity],
-        "steps": (e.steps if e else "") or "Find the site's account-deletion page or privacy contact."})
-    store.set_action_state(aid, store.action(aid)["state"], f"added by owner: {why or 'known account'}")
+    aid, created = service.add_site(s, store, target, identity, url, email, why, kind)
+    contact = store.action(aid)["contact"]
     console.print(f"[green]{'added' if created else 'updated'}[/] action #{aid} for {target}"
                   + ("" if contact else " (no contact yet: `leakguard remove set ID --contact ...`)"))
 
