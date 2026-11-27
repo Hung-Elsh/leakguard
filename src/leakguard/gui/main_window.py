@@ -13,8 +13,12 @@ from .. import config, monitor, service, wording
 from ..plugins import ALL_PLUGINS
 from ..wording import CHECK as C
 from . import theme, worker
+from .actions import ActionController
+from .pages.cleanup import CleanupPage
+from .pages.found import FoundPage
 from .pages.overview import OverviewPage
 from .pages.soon import SoonPage
+from .pages.todo import TodoPage
 from .widgets.cards import Toast, label
 from .wizard.about_you import AboutYouDialog
 
@@ -26,7 +30,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.profile = profile
         self.settings, self.store = service.open_profile(profile)
-        self.job: worker.Job | None = None
+        self.job: worker.Job | None = None              # the running check
+        self.jobs: set[worker.Job] = set()              # other background work (send, form, re-check)
+        self.actions = ActionController(self)
+        self._refresh_pending = False
         self._stage, self._last_done = 1, 0
         self._first_run = False
         self.setWindowTitle("LeakGuard" + (" (practice mode)" if self.settings.is_lab else ""))
@@ -97,7 +104,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.pages = {}
         for name in PAGES:
-            page = OverviewPage() if name == "overview" else SoonPage(wording.NAV[name])
+            page = {"overview": OverviewPage, "todo": TodoPage, "found": FoundPage,
+                    "cleanup": CleanupPage}.get(name)
+            page = (page() if name == "overview" else page(self)) if page else SoonPage(wording.NAV[name])
             if name == "overview":
                 page.navigate.connect(self.show_page)
             self.pages[name] = page
@@ -246,6 +255,33 @@ class MainWindow(QMainWindow):
     def _failed(self, detail: str) -> None:
         self._finish()
         self.toast.show_message(C["failed"], "Details", lambda: self._details(C["failed"], detail), seconds=20)
+
+    def changed(self) -> None:
+        """Something was answered or moved on: every page shows the new state. Deferred until the click that
+        caused it has finished (rebuilding a page deletes the button being clicked), and merged into one."""
+        if not self._refresh_pending:
+            self._refresh_pending = True
+            QTimer.singleShot(0, self._refresh_now)
+
+    def _refresh_now(self) -> None:
+        self._refresh_pending = False
+        self.refresh()
+
+    def run_job(self, fn, done, failed=None) -> None:
+        """Background work other than a check (send, fill a form, re-check one removal)."""
+        job = worker.Job(fn, self.settings.secret_values())
+        self.jobs.add(job)
+
+        def finish(handler, value):
+            self.jobs.discard(job)
+            if handler:
+                handler(value)
+        job.signals.done.connect(lambda r: finish(done, r))
+        job.signals.failed.connect(lambda d: finish(failed or (lambda x: self.show_details(C["failed"], x)), d))
+        worker.start(job)
+
+    def show_details(self, text: str, detail: str) -> None:
+        self._details(text, detail)
 
     def _details(self, text: str, detail: str) -> None:
         box = QMessageBox(self)

@@ -58,3 +58,45 @@ def test_check_summary_words():
     assert "1 new address or username might be yours" in text and "1 service didn't work" in text
     assert main_window.check_summary(service.CheckResult(cancelled=True)) == [wording.CHECK["stopped"]]
     assert main_window.check_summary(service.CheckResult()) == [wording.CHECK["nothing_new"]]
+
+
+def _lab_window(qtbot):
+    w = main_window.MainWindow("lab")
+    qtbot.addWidget(w)
+    return w
+
+
+def test_todo_answer_and_undo(qtbot, temp_data):
+    from leakguard.models import Candidate, Finding
+    w = _lab_window(qtbot)
+    st = w.store
+    st.seed("zorblat11@seclab.test", "email", "test")
+    ident = st.identities("claimed")[-1]
+    st.save_findings(st.start_scan("scan"), ident, "intelx",
+                     [Finding("intelx", "leak", "IntelX: a.txt", severity="high", locator="i1")])
+    st.add_candidate(Candidate("zorblat-fanclub", "username", "pse:http://127.0.0.1:5055/x"))
+    page = w.pages["todo"]
+    page.refresh()
+    t = service.todo(w.settings, st)
+    assert t.count == 3                                   # 1 identity, 1 question, 1 clean-up step
+    page._answer(service.review_groups(t.review), "open")
+    assert not service.todo(w.settings, st).review
+    w.toast._action()                                     # Undo
+    assert service.todo(w.settings, st).review
+
+
+def test_send_needs_a_checked_address(qtbot, temp_data):
+    from PySide6.QtWidgets import QPushButton
+    from leakguard.gui import actions
+    w = _lab_window(qtbot)
+    aid, _ = w.store.upsert_action({"key": "account:y", "kind": "account_delete", "method": "email",
+                                    "template": "account_deletion", "target": "Y", "finding_ids": [],
+                                    "identities": ["zorblat11@seclab.test"], "contact": "guess@y.example",
+                                    "contact_verified": False})
+    d = actions.SendDialog(w, aid)
+    qtbot.addWidget(d)
+    assert "Send" not in [b.text() for b in d.findChildren(QPushButton)]     # a guessed address: never sendable
+    service.set_contact(w.store, aid, "privacy@y.example")
+    d.build()
+    assert "Send" in [b.text() for b in d.findChildren(QPushButton)]
+    assert w.store.action(aid)["state"] == "drafted"                         # shown, not sent
