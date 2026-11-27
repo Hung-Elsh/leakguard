@@ -64,8 +64,11 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[gui,browser]'
 .venv/bin/leakguard-app --add-to-menu    # optional: add LeakGuard to your application menu (your user only)
 ```
 If it doesn't start and mentions "xcb", install Qt's one missing system library: `sudo apt install libxcb-cursor0`.
-What's there so far: first-run setup, Start check (quick or full, everything or one address) with progress and
-Stop, and the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes).
+What's there so far: first-run setup; Start check (quick or full, everything or one address) with progress and
+Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes); **To do**
+(is this you, what should we do with each find, your clean-up steps, what's waiting on sites; one click each,
+with Undo); **Found** (everything found, searchable); **Clean-up** (every step, and adding a site we missed).
+Emails and forms go out only from a review screen that shows exactly what is sent.
 *View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
 
 ## Commands
@@ -103,4 +106,4 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
 | 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |
-| 6 | Desktop app (`native-app` branch) | G0 foundations, G1 window + first run + Overview done; G2 decisions next |
+| 6 | Desktop app (`native-app` branch) | G0 foundations, G1 window + Overview, G2 To do + Found + Clean-up done; G3 connections next |

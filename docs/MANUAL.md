@@ -270,6 +270,25 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
 - **Overview:** how much is cleaned up, what needs you, what LeakGuard is waiting for (and the next follow-up
   date), what's still open by seriousness, mail blocked this week, a trend and recent changes. The numbers are the
   scorecard's (`leakguard report`).
+- **To do** holds every decision, most important first:
+  1. *Is this you?* Addresses and usernames a check found. *Yes, it's me* (it gets checked and cleaned up from
+     now on) or *No* (never checked); *Yes to all* / *No to all*; or add one of yours that no check found.
+     Same as `leakguard claim` / `reject`.
+  2. *What should we do?* New finds, one question per site, page or leak (the same account found for two of your
+     usernames, or by three tools, is one question). *Remove it*, *It's mine: keep & secure*, *Not me* or
+     *Ignore*; *Remove all* answers every question at once. Same as `leakguard mark`.
+  3. *Your turn.* Clean-up steps only you can do or confirm: *Review & send* (the exact email, from the address
+     it's about; *Send* is the confirmation, and it's only offered once the site's address is one you checked),
+     *Review & submit* (the filled-in form as a picture; *Submit* is the confirmation), *Open the page* / *How* /
+     *Done* for steps on the site, *Can't do it* to skip.
+  4. *Waiting for sites* (folded): *They replied*, *Check now* (re-runs the checks that found it; confirmed gone
+     when they no longer see it), *It's done*.
+  Every answer shows a message with **Undo** (sending can't be undone, which is why it has its own review).
+- **Found:** everything found, with seriousness, where, when, whether it's still there and your answer. Search,
+  or show what's still there / everything / gone. Double-click a row to see it (leaked passwords stay masked),
+  open the page, or change your answer.
+- **Clean-up:** every step grouped as your turn, waiting for sites, done and confirmed, skipped (*Put back*
+  brings one back), each with its history. *Add a site we missed* = `leakguard remove add`.
 - **Practice mode:** `leakguard-app --practice` uses the lab profile: a made-up person, lab services only.
 - The safety rules are the CLI's: only claimed identities are checked, nothing is sent without your confirmation,
   keys stay in the system keyring.
