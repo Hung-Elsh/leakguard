@@ -14,13 +14,19 @@ JARGON = ["api", "http", "https", "oauth", "smtp", "imap", "token", "scope", "ca
           "traceback", "timeout", "rate limit", "fixture", "osint", "cli", "paste", "partial", "dns", "url"]
 
 
+def _walk(where, value):
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k not in ("page", "url"):                 # web addresses, not prose
+                yield from _walk(f"{where}[{k}]", v)
+    elif isinstance(value, str):
+        yield where, value
+
+
 def _texts():
     for name in dir(wording):
-        value = getattr(wording, name)
-        if name.isupper() and isinstance(value, dict):
-            yield from ((f"{name}[{k}]", v) for k, v in value.items())
-        elif name.isupper() and isinstance(value, str):
-            yield name, value
+        if name.isupper():
+            yield from _walk(name, getattr(wording, name))
 
 
 @pytest.mark.parametrize("where,text", list(_texts()))
@@ -38,6 +44,12 @@ def test_every_internal_value_has_words():
     assert {"account_delete", "broker_optout", "hibp_optout", "leak_removal", "manual", "paste_report",
             "protect_checklist", "rotate_password", "data_erasure"} <= set(wording.ACTION_KIND)
     assert {"info", "low", "medium", "high"} <= set(wording.SEVERITY)
+    import json as _json
+    from leakguard.paths import CONFIG
+    rules = {r["id"] for r in _json.loads((CONFIG / "block_rules.json").read_text())["rules"]}
+    assert rules <= set(wording.MAIL_RULE)                       # every mail rule explained in plain words
+    from leakguard import service
+    assert set(service.SEARCH_KEYS) <= set(wording.KEY_INFO)
 
 
 @pytest.mark.parametrize("status,error,etype,http,kind", [

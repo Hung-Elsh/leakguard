@@ -243,7 +243,7 @@ ABOUT_YOU = {
     "name_help": "Used to sign the removal requests we write for you.",
     "privacy": "Saved only on this computer. To look you up, each check service receives just the address "
                "or name it checks.",
-    "save_first": "Save && start first check",
+    "save_first": "Save & start first check",
     "save": "Save",
     "bad_keyword": "Your keyword needs 4 to 64 letters or numbers (you can also use . _ and -).",
     "no_email": "Add at least one email address.",
@@ -469,3 +469,169 @@ def check_result(text: str, target: str, date: str) -> str:
     if text.startswith("no linked"):
         return TODO["check_nothing"]
     return TODO["still_there"].format(target=target, date=date or "soon")
+
+
+# ---- Mail ----------------------------------------------------------------------------------------------
+MAIL = {
+    "intro": "LeakGuard looks through your inbox for spam, scams and newsletters you never signed up for, and "
+             "moves them out of the way. Nothing is deleted.",
+    "connected_app_password": "Connected: {address} ({provider}, with an app password).",
+    "connected_google": "Connected: {address} (with your own Google project).",
+    "connected_practice": "Practice mailbox: {address}.",
+    "not_connected": "Your mail isn't connected yet.",
+    "check": "Check my mail", "change": "Change", "disconnect": "Disconnect",
+    "disconnected": "Mail disconnected. Its password was removed from this computer.",
+    "checking": "Looking through your inbox...",
+    "summary": "We looked at {total} messages.",
+    "nothing": "Nothing to move: your inbox looks clean.",
+    "keep_rest": "{count} stay in your inbox.",
+    "move": "Move {count} messages",
+    "move_confirm": "Move {count} messages?\n\n{breakdown}\n\nNothing is deleted: you can move them back any time.",
+    "moving": "Moving...",
+    "moved": "Moved {count} messages.",
+    "col_from": "From", "col_subject": "Subject", "col_action": "What we'd do", "col_why": "Why",
+    "connect_title": "Connect your mail",
+    "connect_intro": "LeakGuard uses an app password: a separate password just for LeakGuard, which you can "
+                     "remove at any time. Your normal password is never used or stored.",
+    "email": "Your email address", "password": "App password", "test_save": "Test & save",
+    "testing": "Checking that it works...",
+    "saved": "Connected. Your app password is kept in {where}.",
+    "detected": "Mail service: {name}",
+    "unknown_provider": "We don't know this mail service yet. Enter its servers under Other mail service.",
+    "unsupported": "Outlook, Hotmail and Live no longer allow app passwords, so LeakGuard can't connect to "
+                   "them yet.",
+    "other": "Other mail service (advanced)",
+    "incoming": "Incoming server", "outgoing": "Outgoing server", "port": "Port", "security": "Security",
+    "google": "Use my own Google project (advanced)",
+    "google_help": "If you made your own Google Cloud project for Gmail, choose its client file. A browser "
+                   "opens to sign in with Google on the next mail check.",
+    "google_pick": "Choose the client file...",
+    "google_saved": "Saved. Press Check my mail to sign in with Google.",
+    "open_page": "Open the page",
+    "failed": "The mail check couldn't run. The details are saved.",
+}
+MAIL_STEPS = {
+    "gmail": "1. Turn on 2-Step Verification in your Google Account (under Security).\n"
+             "2. Open the app passwords page, type LeakGuard as the name, and press Create.\n"
+             "3. Copy the 16-letter password and put it below.",
+    "yahoo": "1. Open Account Security in your Yahoo account.\n"
+             "2. Choose Generate app password, type LeakGuard, and press Generate.\n"
+             "3. Copy the password and put it below.",
+    "icloud": "1. Sign in to your Apple Account and open Sign-In and Security.\n"
+              "2. Choose App-Specific Passwords and add one called LeakGuard.\n"
+              "3. Copy the password and put it below.",
+    "other": "Ask your mail service for an app password (or use your normal password if it has none), and "
+             "enter its incoming and outgoing servers below.",
+}
+MAIL_PROBLEM = {
+    "refused": "The address or app password wasn't accepted. Check both and try again.",
+    "offline": "Couldn't reach the mail service. Check your internet connection and the server names.",
+    "blocked": "LeakGuard isn't allowed to contact that server.",
+    "other": "Something went wrong. The details are saved.",
+}
+MAIL_ACTION = {"spam": "To Junk", "trash": "To Trash", "label": "Put aside to review", "keep": "Stays"}
+MAIL_WOULD = {
+    "spam": "{count} look like spam or scams (to Junk)",
+    "trash": "{count} are from senders you blocked (to Trash)",
+    "label": "{count} are newsletters that started after your address leaked (put aside to review)",
+}
+MAIL_RULE = {
+    "owner-blocklist": "From a sender you blocked",
+    "sextortion": "A blackmail threat",
+    "phishing-brand-spoof": "Pretends to be a well-known company",
+    "phishing-reply-to": "Replies would go to a different, unknown address",
+    "auth-fail": "The sender couldn't be confirmed as real",
+    "scam-subject": "A typical scam subject",
+    "scam-body": "Typical scam wording",
+    "storage-scam": "A fake \"your storage is full\" warning",
+    "random-domain": "Sent from a random-looking address",
+    "bulk-bcc": "Sent to many people at once, hidden",
+    "list-after-leak": "A newsletter that started after your address leaked",
+    "allowlist": "From someone you allowed",
+    "": "Looks normal",
+}
+
+
+# ---- Settings: search services and extra checks -------------------------------------------------------
+SETTINGS = {"title": "Settings", "services": "Search services", "tools": "Extra checks", "about_you": "About you...",
+            "close": "Close", "better": "Make checks better",
+            "better_keys": "{count} search {services}", "better_tools": "{count} extra {checks}",
+            "better_line": "{what} can still be added.", "and": "and",
+            "better_button": "Set up"}
+KEYS = {
+    "intro": "Each one lets LeakGuard look in more places. All of them are optional.",
+    "key": "Key", "test_save": "Test & save", "test": "Test", "remove": "Remove", "open_page": "Get a key",
+    "connected": "Connected", "not_connected": "Not connected",
+    "from_outside": "Set outside the app (in a settings file); it can't be changed here.",
+    "testing": "Checking the key...",
+    "saved": "Works. The key is kept in {where}.",
+    "works": "Works.",
+    "removed": "Removed {name}.",
+    "practice": "Practice mode uses made-up keys; you can test them, but not change them.",
+}
+KEY_PROBLEM = {
+    "refused": "The service didn't accept this key. Check that you copied all of it.",
+    "offline": "Couldn't reach the service. Check your internet connection.",
+    "busy": "The service is busy right now. Try again in a minute.",
+    "blocked": "LeakGuard isn't allowed to contact this service.",
+    "other": "Something went wrong. The details are saved.",
+}
+KEY_INFO = {
+    "HIBP_API_KEY": {"name": "Have I Been Pwned", "cost": "Paid (a small monthly subscription)",
+                     "adds": "The most complete list of data breaches your addresses were in.",
+                     "steps": "1. Open the page and choose a subscription.\n2. Copy the key it shows.\n"
+                              "3. Put it below.",
+                     "page": "https://haveibeenpwned.com/API/Key"},
+    "INTELX_API_KEY": {"name": "Intelligence X", "cost": "Free account",
+                       "adds": "Searches archives of leaked files for your addresses.",
+                       "steps": "1. Open the page and create a free account.\n2. Copy the key shown under "
+                                "your account's developer settings.\n3. Put it below.",
+                       "page": "https://intelx.io/account?tab=developer"},
+    "BRAVE_API_KEY": {"name": "Brave Search", "cost": "Free plan",
+                      "adds": "Searches the web for pages that mention your keyword, addresses and usernames.",
+                      "steps": "1. Open the page and sign up for the free plan.\n2. Create a key and copy it.\n"
+                               "3. Put it below.",
+                      "page": "https://api-dashboard.search.brave.com/app/keys"},
+    "GITHUB_TOKEN": {"name": "GitHub", "cost": "Free",
+                     "adds": "Faster, deeper searches of public code. Works without it, just slower.",
+                     "steps": "1. Open the page and sign in to GitHub.\n2. Press Generate (no extra permissions "
+                              "are needed) and copy what it shows.\n3. Put it below.",
+                     "page": "https://github.com/settings/personal-access-tokens/new"},
+}
+TOOLS = {
+    "intro": "Extra tools that look in more places. They run on this computer.",
+    "installed": "Installed", "missing": "Not installed",
+    "install": "Install", "copy": "Copy the command", "copied": "Copied.",
+    "installing": "Installing {name}... This can take a few minutes.",
+    "installed_ok": "{name} is installed.",
+    "install_failed": "{name} couldn't be installed. The details are saved.",
+    "need_pipx": "One-click installs need a helper called pipx. Run this once in a terminal (it asks for your "
+                 "password), then press Install again:",
+    "by_hand": "This one is installed with a command in a terminal (it asks for your password):",
+    "practice": "Practice mode uses recorded results instead of these tools.",
+}
+TOOL_INFO = {
+    "holehe": "Finds sites where an account was made with your email.",
+    "h8mail": "Looks your email up in leaked password lists.",
+    "ghunt": "Shows what your Google account reveals publicly.",
+    "mosint": "Several email lookups in one: leaks, linked sites, related addresses.",
+    "socialscan": "Checks whether your email or usernames are taken on big platforms.",
+    "sherlock": "Finds your usernames on hundreds of sites.",
+    "maigret": "Finds your usernames on thousands of sites, with what each profile shows.",
+    "blackbird": "Finds accounts for your usernames and email across many sites.",
+    "spiderfoot": "A large search tool that checks leak search engines for your email.",
+    "chromium": "A browser LeakGuard uses, hidden, to fill in opt-out forms for you.",
+}
+GHUNT = {
+    "title": "Sign in for the Google check",
+    "intro": "The Google check looks at what your Google account shows to anyone. It needs to be signed in "
+             "with a Google account: use a spare one, not your main account.",
+    "steps": "1. Open the page and add the GHunt Companion extension to Firefox or Chrome.\n"
+             "2. In that browser, sign in to Google with your spare account.\n"
+             "3. Open the extension, copy the code it shows, and put it below.",
+    "page": "https://github.com/mxrch/ghunt_companion",
+    "open_page": "Open the page", "code": "Code from the extension", "sign_in": "Sign in",
+    "signing_in": "Signing in...", "ok": "Signed in as {who}.",
+    "failed": "The sign-in didn't work. Copy a fresh code from the extension and try again.",
+    "signed_in": "Signed in", "not_signed_in": "Not signed in", "button": "Sign in...",
+}
