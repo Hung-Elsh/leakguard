@@ -39,9 +39,9 @@ keyword ─► discover (OSINT) ─► evaluate ─► your verdict ─► remov
 | What | Where |
 |---|---|
 | Your keyword, emails, usernames | `~/.config/leakguard/identities.yaml` (mode 600) |
-| Mail allow/block lists | `~/.config/leakguard/` |
+| Mail allow/block lists, mail connection (`mail.yaml`, no passwords) | `~/.config/leakguard/` |
 | Scan database, raw tool output, reports, drafts, screenshots, Takeout exports | `~/.local/share/leakguard/` |
-| API keys, Gmail sign-in | system keyring (`leakguard keys`); without one, `~/.config/leakguard/secrets.env` (mode 600) |
+| API keys, mail app password, Gmail sign-in | system keyring (`leakguard keys`); without one, `~/.config/leakguard/secrets.env` (mode 600) |
 
 ## Setup
 ```bash
@@ -67,8 +67,10 @@ If it doesn't start and mentions "xcb", install Qt's one missing system library:
 What's there so far: first-run setup; Start check (quick or full, everything or one address) with progress and
 Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes); **To do**
 (is this you, what should we do with each find, your clean-up steps, what's waiting on sites; one click each,
-with Undo); **Found** (everything found, searchable); **Clean-up** (every step, and adding a site we missed).
-Emails and forms go out only from a review screen that shows exactly what is sent.
+with Undo); **Found** (everything found, searchable); **Clean-up** (every step, and adding a site we missed);
+**Mail** (connect with an app password: Gmail, Yahoo, iCloud or your own servers; check, then move what you saw);
+**Settings** (search-service keys, each tested before it's saved; extra checks with one-click installs and the
+Google check's sign-in). Emails, forms and mail moves happen only after a screen that shows exactly what happens.
 *View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
 
 ## Commands
@@ -106,4 +108,4 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
 | 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |
-| 6 | Desktop app (`native-app` branch) | G0 foundations, G1 window + Overview, G2 To do + Found + Clean-up done; G3 connections next |
+| 6 | Desktop app (`native-app` branch) | G0-G3 done (window, Overview, To do, Found, Clean-up, Mail, Settings); G4 reports + notifications next |

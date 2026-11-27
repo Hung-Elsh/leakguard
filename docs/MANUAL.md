@@ -289,6 +289,24 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
   open the page, or change your answer.
 - **Clean-up:** every step grouped as your turn, waiting for sites, done and confirmed, skipped (*Put back*
   brings one back), each with its history. *Add a site we missed* = `leakguard remove add`.
+- **Mail:** connect once, on one screen: your address (LeakGuard recognises Gmail, Yahoo and iCloud and shows
+  that service's three steps to make an **app password**), the app password, *Test & save*. It logs in to read
+  and to send without reading, moving or sending anything; only then is it saved (the password in the system
+  keyring, the servers in `~/.config/leakguard/mail.yaml`). *Other mail service* takes your own servers;
+  Outlook, Hotmail and Live no longer allow app passwords. *Use my own Google project* is the Gmail-API path the
+  CLI uses (choose your client file; the next check signs in). LeakGuard may contact only the mail servers set
+  here. *Check my mail* (also under *How* in the toolbar) is a preview: what would move and why, in plain words.
+  *Move N messages* asks first, then moves exactly those messages (Junk, Trash, or a review folder; nothing is
+  deleted). Removal emails are sent from the connected address, and refused for any other address.
+- **Settings** (⚙, Ctrl+,):
+  - *Search services*: Have I Been Pwned, Intelligence X, Brave Search, GitHub. Each card says what it adds and
+    what it costs, links to where you get the key, and *Test & save* tries the key with one small request before
+    saving it in the keyring (= `leakguard keys set`). Keys from `.env` or the environment are only tested.
+  - *Extra checks*: each tool, what it adds, and whether it's installed. *Install* runs a pinned
+    `pipx install` (no admin rights; GHunt gets its crash fixes); tools that need `sudo apt` show the command to
+    copy. The Google check has *Sign in...*: paste the code from the GHunt Companion extension (use a spare Google
+    account); it's handed to `ghunt login` and never logged.
+  - The Overview shows *Make checks better* while a search service or extra check is missing.
 - **Practice mode:** `leakguard-app --practice` uses the lab profile: a made-up person, lab services only.
 - The safety rules are the CLI's: only claimed identities are checked, nothing is sent without your confirmation,
   keys stay in the system keyring.
