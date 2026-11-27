@@ -70,6 +70,9 @@ ACTION_KIND = {
     "rotate_password": "Change passwords that leaked",
     "hibp_optout": "Hide your address from public breach searches",
     "manual": "{target}",
+    "page": "Get the page on {target} taken down",
+    "keyserver": "Take your entry off the public key directory {target}",
+    "profile": "Hide your public {target} profile",
 }
 ACTION_STATE = {"planned": "To do", "drafted": "Ready to send", "requested": "Waiting for the site",
                 "acknowledged": "The site replied", "removed": "Removed, we're double-checking",
@@ -131,26 +134,69 @@ def problem(status: str, error: str = "", error_type: str = "", http_status: int
 
 
 # ---- one sentence per finding ----------------------------------------------------------------------
-def _site(f) -> str:
-    data = {}
+SOURCE_SITE = {"ghunt": "Google", "gravatar": "Gravatar", "github": "GitHub"}   # profile / code finds
+NAMED_BY_SITE = ("account", "breach", "profile")                                   # the removal planner names these
+
+
+def _field(f, key: str):
     try:
-        data = json.loads(f["data"] or "{}") if not isinstance(f["data"], dict) else f["data"]
+        return f[key]
+    except (KeyError, IndexError):
+        return None
+
+
+def _data(f) -> dict:
+    raw = _field(f, "data")
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw or "{}")
     except (ValueError, TypeError):
-        pass
-    site = data.get("site") or data.get("name") or data.get("breach") or data.get("broker") or ""
-    if not site and f["url"]:
+        return {}
+
+
+def _row(f) -> dict:
+    """The fields the removal planner reads, from a store row or a plain dict."""
+    data = _field(f, "data")
+    return {k: _field(f, k) or "" for k in ("category", "source", "title", "url", "evidence")} | {
+        "data": data if isinstance(data, str) else json.dumps(data or {})}
+
+
+def site_of(f) -> str:
+    """The site a finding is about, as the removal planner sees it ('spotify.com' and 'Spotify' are one site;
+    a breach is named after the breached site, not the service that reported it). '' when unknown."""
+    from .removal.planner import _site_of
+    cat = _field(f, "category")
+    if cat in NAMED_BY_SITE:
+        name, domain = _site_of(_row(f))
+        name = name or domain
+        if cat == "profile":
+            name = SOURCE_SITE.get(_field(f, "source") or "", name)
+        return name[:1].upper() + name[1:] if name and name == name.lower() else name
+    site = _data(f).get("site") or _data(f).get("broker") or ""
+    if not site and cat == "code":
+        site = SOURCE_SITE.get(_field(f, "source") or "", "")
+    if not site and _field(f, "url"):
         site = (urlsplit(f["url"]).hostname or "").removeprefix("www.")
     return str(site)
 
 
-def finding_sentence(f) -> str:
-    """'Your email is in the Adobe data breach.' Works on a store row or a dict with the same keys."""
-    who, site, cat = f["identity"], _site(f), f["category"]
+def join_names(names: list[str]) -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    names = list(dict.fromkeys(names))
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def finding_sentence(f, who: str | None = None, many: bool = False) -> str:
+    """'zorblat11@... was in the LabShop data breach.' Works on a store row or a dict with the same keys.
+    `who` replaces the identity (e.g. 'zorblat11 and zorblat_x' for a group; then many=True)."""
+    who, site, cat = who or f["identity"], site_of(f), f["category"]
+    was, appears = ("were", "appear") if many else ("was", "appears")
     title = re.sub(r"^[A-Za-z]+:\s*", "", f["title"] or "")          # "IntelX: file.txt" -> "file.txt"
     return {
-        "breach": f"{who} was in the {site or title} data breach.",
-        "leak": f"{who} appears in a leaked file ({title}).",
-        "paste": f"{who} was posted on a public text site{f' ({site})' if site else ''}.",
+        "breach": f"{who} {was} in the {site} data breach." if site else f"{who} {was} in a data breach.",
+        "leak": f"{who} {appears} in a leaked file ({title}).",
+        "paste": f"{who} {was} posted on a public text site{f' ({site})' if site else ''}.",
         "account": f"An account on {site or title} uses {who}.",
         "profile": f"Your public {site or 'profile'} page shows {who}.",
         "web_page": f"A web page{f' on {site}' if site else ''} mentions {who}.",
@@ -160,8 +206,21 @@ def finding_sentence(f) -> str:
     }.get(cat, f"{who}: {title}")
 
 
+def group_sentence(category: str, rows: list) -> str:
+    """One sentence for a To do question that groups several finds."""
+    names = list(dict.fromkeys(r["identity"] for r in rows))
+    who, many = join_names(names), len(names) > 1
+    files = {r["url"] or r["title"] for r in rows}
+    if category == "leak" and len(files) > 1:
+        return f"{who} {'appear' if many else 'appears'} in {len(files)} leaked files."
+    return finding_sentence(rows[0], who, many)
+
+
 def action_title(a) -> str:
-    return ACTION_KIND.get(a["kind"], "{target}").format(target=a["target"] or "the site")
+    key, title = _field(a, "key") or "", _field(a, "title") or ""
+    kind = ("page" if key.startswith("page:") else "keyserver" if key.startswith("keyserver:")
+            else "profile" if title.startswith("Remove or hide the public") else a["kind"])
+    return ACTION_KIND.get(kind, "{target}").format(target=a["target"] or "the site")
 
 
 # ---- the desktop app's screens -------------------------------------------------------------------
@@ -278,3 +337,135 @@ def day(ts: str | None) -> str:
     t = datetime.fromisoformat(ts)
     this_year = datetime.now(timezone.utc).year
     return f"{t.day} {t.strftime('%b')}" + ("" if t.year == this_year else f" {t.year}")
+
+
+# ---- To do -------------------------------------------------------------------------------------------
+TODO = {
+    "empty": "All done. Nothing needs you right now.",
+    "who_title": "Is this you?",
+    "who_help": "A check found these. Only what you say is yours gets checked and cleaned up.",
+    "yes": "Yes, it's me", "no": "No", "yes_all": "Yes to all", "no_all": "No to all",
+    "add_mine": "Add another one of yours", "add_placeholder": "an email address or username", "add": "Add",
+    "what_title": "What should we do?",
+    "what_help": "New things a check found. Pick what should happen; you can change it later under Found.",
+    "remove_all": "Remove all {count}",
+    "show_more": "Show {count} more",
+    "turn_title": "Your turn",
+    "turn_help": "Things only you can do, or that need your OK before anything is sent.",
+    "waiting_title": "Waiting for sites",
+    "waiting_help": "Requests that are out. We check again on the date shown.",
+    "replied": "They replied", "check_now": "Check now", "its_done": "It's done",
+    "done": "Done", "cant": "Can't do it", "steps": "How", "undo": "Undo",
+    "answered": "{answer} ({count} {things}).",
+    "decided_yes": "Added {who}. We'll check {them} from now on.",
+    "decided_no": "Okay, we'll ignore {who}.",
+    "marked_done": "Marked as done: {target}.",
+    "skipped": "Skipped: {target}.",
+    "replied_done": "Noted: {target} replied.",
+    "checking": "Checking {target}...",
+    "gone": "Confirmed gone: {target}.",
+    "still_there": "Still there: {target}. We'll check again around {date}.",
+    "check_owner": "This one is confirmed by you, not by a check: press Done when it's done.",
+    "check_nothing": "There's nothing to look up for this one: press Done when it's done.",
+    "next_check": "Next check {date}",
+    "found_by": "Seen in {how}",
+    "made_from_keyword": "Made from your keyword",
+    "made_from_address": "The name part of {address}",
+    "added_by_you": "Added by you",
+    "put_back": "Put back",
+    "put_back_done": "Put back: {target}.",
+    "history": "History",
+}
+
+ACTION_HELP = {
+    "email": "We wrote the request for you. Review it, then send it from your address.",
+    "form": "We fill in the site's form for you. You see it before anything is submitted.",
+    "manual": "This one is done on the site itself. Open the page, follow the steps, then press Done.",
+    "checklist": "A short checklist for the accounts you keep.",
+}
+
+SEND = {
+    "title": "Review and send",
+    "from": "From", "to": "To", "subject": "Subject",
+    "send": "Send", "not_now": "Not now",
+    "need_contact": "We don't have a checked address for this site yet. Find its privacy email address or "
+                    "contact page on the site, enter it here, then press Save.",
+    "contact_placeholder": "privacy@example.com or example.com/privacy",
+    "save_contact": "Save",
+    "page_only": "This site takes requests on a web page, not by email. Copy the text below, open the page, "
+                 "and put it into the form there. Press Done in To do when you have sent it.",
+    "copy": "Copy the text", "open_page": "Open the page", "copied": "Copied.",
+    "sending": "Sending...",
+    "sent": "Sent to {to}. We'll check again around {date}.",
+    "failed": "It couldn't be sent. Nothing was sent. The details are saved.",
+}
+
+FORM = {
+    "title": "Review and submit",
+    "filling": "Filling in the form on {target}... This takes a few seconds.",
+    "filled": "We filled in the form below. Nothing has been submitted yet.",
+    "submit": "Submit", "not_now": "Not now",
+    "submitting": "Submitting...",
+    "submitted": "Submitted. We'll check again around {date}.",
+    "no_success": "Submitted, but the site didn't show a clear confirmation. We'll check again around {date}.",
+    "failed": "The form couldn't be filled in. Nothing was submitted. The details are saved.",
+}
+
+STEPS = {"title": "How to do it", "close": "Close", "done": "I've done it"}
+
+# ---- Found and Clean-up ------------------------------------------------------------------------------
+FOUND = {
+    "intro": "Everything the checks found. Double-click a row to see it and change your answer.",
+    "search": "Search...",
+    "show_open": "Still there", "show_all": "Everything", "show_gone": "Gone",
+    "col_seriousness": "Seriousness", "col_what": "What", "col_where": "Where", "col_first": "First seen",
+    "col_status": "Now", "col_answer": "Your answer",
+    "status_there": "Still there", "status_gone": "Gone",
+    "answer_none": "Not answered",
+    "open_link": "Open the page",
+    "change": "Change your answer:",
+    "sources": "Found by",
+    "empty": "Nothing here yet. Start a check to begin.",
+}
+VERDICT_LABEL = {"open": "Remove", "protect": "Keep & secure", "accepted": "Ignore", "false_positive": "Not me"}
+
+CLEANUP = {
+    "intro": "Every clean-up step, from what needs you to what's confirmed gone.",
+    "your_turn": "Your turn", "waiting": "Waiting for sites", "finished": "Done and confirmed",
+    "skipped": "Skipped",
+    "add_title": "Add a site we missed",
+    "add_help": "An account you know about that no check found. We'll look up how to delete it.",
+    "add_site": "Site name (e.g. Zing ID)", "add_who": "Your email or username on it",
+    "add_page": "Its delete page or privacy email (optional)",
+    "add": "Add",
+    "added": "Added {target} to your clean-up.",
+    "empty": "Nothing to clean up yet.",
+    "history": "History",
+}
+
+
+def origin_text(origin: str) -> str:
+    """Where a proposed identity came from, in plain words."""
+    origin = origin or ""
+    head, _, rest = origin.partition(":")
+    if head == "derived":
+        rest = rest.strip()
+        if rest == "keyword":
+            return TODO["made_from_keyword"]
+        if rest.startswith("local part of "):
+            return TODO["made_from_address"].format(address=rest.removeprefix("local part of "))
+        return TODO["made_from_keyword"]
+    if head.startswith("owner"):
+        return TODO["added_by_you"]
+    return TODO["found_by"].format(how=SOURCE.get(head, "web search"))
+
+
+def check_result(text: str, target: str, date: str) -> str:
+    """tracker.check's answer, in plain words."""
+    if text.startswith("verified") or "are gone" in text:
+        return TODO["gone"].format(target=target)
+    if "confirmed by you" in text:
+        return TODO["check_owner"]
+    if text.startswith("no linked"):
+        return TODO["check_nothing"]
+    return TODO["still_there"].format(target=target, date=date or "soon")
