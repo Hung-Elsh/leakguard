@@ -55,3 +55,12 @@ def test_cancel_stops_a_check_part_way(lab, store):
     assert summary.cancelled
     assert seen and seen[-1][0] < seen[-1][1]        # not every run happened
     assert len(summary.runs) == len(seen)            # every finished run is still recorded
+
+
+def test_recent_changes_keep_the_order_within_one_second(lab, store):
+    aid, _ = store.upsert_action({"key": "broker:x", "kind": "broker_optout", "method": "form", "target": "X",
+                                  "finding_ids": []})
+    store.set_action_state(aid, "requested", "form submitted")
+    store.set_action_state(aid, "verified", "gone after re-check")
+    kinds = [k for _, k, _ in service.recent_changes(store)]
+    assert kinds[:2] == ["verified", "requested"]

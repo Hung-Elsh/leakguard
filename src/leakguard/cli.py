@@ -137,12 +137,21 @@ def _print_summary(summary: engine.RunSummary) -> None:
 def scan(profile: Optional[str] = ProfileOpt, source: Optional[list[str]] = SourceOpt,
          stage: str = typer.Option("all", help="all | keyword (search the keyword, propose candidates) | "
                                                "identities (deep scan of claimed identities)"),
+         identity: Optional[str] = typer.Option(None, "--identity", "-i",
+                                                help="Only this claimed email or username (every source)."),
          workers: int = typer.Option(4, help="Parallel source runs.")) -> None:
     """Discover exposures: search the keyword, propose candidates, deep-scan every claimed identity."""
     if stage not in ("all", "keyword", "identities"):
         console.print("[red]--stage must be all, keyword or identities[/]")
         raise typer.Exit(2)
     s, store = _open(profile)
+    if identity:
+        if identity.lower() not in {i.value for i in store.identities("claimed")}:
+            console.print(f"[red]{identity} is not a claimed identity[/] (leakguard identities)")
+            raise typer.Exit(2)
+        console.print(f"[bold]{identity}[/]")
+        _print_summary(engine.rescan(s, store, source, {identity.lower()}, workers))
+        return
     if stage in ("all", "keyword"):
         console.print("[bold]Stage 1: keyword[/]")
         _print_summary(engine.expand(s, store, source, workers))

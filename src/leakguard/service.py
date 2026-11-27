@@ -18,7 +18,7 @@ from .plugins.tools import ToolPlugin
 from .runner import ToolError, find_binary
 from .store import Store
 
-CHECK_KINDS = ("quick", "full", "mail")
+CHECK_KINDS = ("quick", "full")         # "mail" arrives with the mail page (G3)
 WAITING_STATES = ("requested", "acknowledged", "removed")
 YOUR_TURN_STATES = ("planned", "drafted")
 
@@ -85,15 +85,85 @@ def set_verdict(store: Store, finding_ids: list[str], verdict: str, note: str = 
 
 
 # ---- checks ----------------------------------------------------------------------------------------
+@dataclass
+class CheckResult:
+    """What a check changed, in counts the app can put into words."""
+    new: int = 0                     # new exposures (one per page/record, not per tool)
+    serious: int = 0                 # ...of which serious
+    gone: int = 0
+    candidates: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
+    cancelled: bool = False
+
+
 def run_check(settings: config.Settings, store: Store, kind: str, progress: engine.Progress | None = None,
-              cancel: threading.Event | None = None):
-    """quick / full: discovery + due removal re-checks (monitor.run). mail: a dry run of the mail rules."""
-    if kind not in CHECK_KINDS:
-        raise ValueError(f"kind must be one of {CHECK_KINDS}")
-    if kind == "mail":
-        from .mail import service as mail_service
-        return mail_service.run(settings, store)        # dry run: nothing is moved
-    return monitor.run(settings, store, quick=kind == "quick", progress=progress, cancel=cancel)
+              cancel: threading.Event | None = None, identity: str | None = None) -> CheckResult:
+    """quick / full: discovery + due removal re-checks (monitor.run), or every source for one claimed address
+    or username when `identity` is given (CLI: `scan --identity`)."""
+    if kind not in ("quick", "full"):
+        raise ValueError("kind must be quick or full")
+    if identity:
+        quick = [p.name for p in ALL_PLUGINS if p.name not in monitor.SLOW_TOOLS] if kind == "quick" else None
+        r = engine.rescan(settings, store, quick, {identity}, progress=progress, cancel=cancel)
+        return CheckResult(new=r.new_findings, gone=r.gone_findings, candidates=r.new_candidates,
+                           problems=[f"{src} / {i}: {st}" for src, i, st in r.runs if st.startswith("error")],
+                           cancelled=r.cancelled)
+    res = monitor.run(settings, store, quick=kind == "quick", progress=progress, cancel=cancel)
+    groups = [g for g in res.grouped_new() if g["severity"] != "info"]
+    return CheckResult(new=len(groups), serious=sum(g["severity"] == "high" for g in groups), gone=len(res.gone),
+                       candidates=res.candidates, problems=res.problems, cancelled=res.cancelled)
+
+
+# ---- the Overview ------------------------------------------------------------------------------------
+@dataclass
+class Overview:
+    gone: int
+    total: int                        # exposures to clean up (open + gone)
+    pct: int
+    open_by_severity: dict
+    needs_you: int
+    waiting: int
+    next_follow_up: str | None
+    mail_blocked_7d: int
+    mail_connected: bool
+    last_check: str | None
+    trend: list[dict]
+    recent: list[tuple[str, str, object]]        # (timestamp, event, finding or action row), newest first
+
+
+def overview(settings: config.Settings, store: Store, recent: int = 8) -> Overview:
+    sc = monitor.scorecard(store)
+    t = todo(settings, store)
+    follow = [a["next_check"] for a in t.waiting if a["next_check"]]
+    return Overview(gone=sc["gone"], total=sc["open"] + sc["gone"], pct=sc["cleaned_pct"],
+                    open_by_severity=sc["open_by_severity"], needs_you=t.count, waiting=len(t.waiting),
+                    next_follow_up=min(follow) if follow else None, mail_blocked_7d=sc["mail_blocked_7d"],
+                    mail_connected=sc["mail_blocked_total"] > 0 or bool(settings.key("GMAIL_TOKEN"))
+                    or bool(settings.key("MAIL_APP_PASSWORD")) or settings.is_lab,
+                    last_check=sc["last_scan"], trend=sc["trend"], recent=recent_changes(store, recent))
+
+
+def recent_changes(store: Store, limit: int = 8) -> list[tuple[str, str, object]]:
+    """New exposures and removal progress, newest first (one entry per action and state)."""
+    events: dict[tuple, tuple[str, int, str, object]] = {}
+    for f in store.findings():
+        if f["severity"] != "info" and (f["disposition"] or "open") in ("open", "protect") and f["first_seen"]:
+            events[("f", f["id"])] = (f["first_seen"], 0, "found", f)
+    for a in store.actions():
+        for n, h in enumerate(json.loads(a["history"] or "[]")):
+            if h["state"] in ("requested", "acknowledged", "removed", "verified", "done"):
+                events[("a", a["id"], h["state"])] = (h["ts"], n, h["state"], a)   # latest entry per state
+    # same second (e.g. submitted, then verified right away): the later history entry comes first
+    ordered = sorted(events.values(), key=lambda e: (e[0], e[1]), reverse=True)
+    return [(ts, kind, row) for ts, _, kind, row in ordered[:limit]]
+
+
+def identity_form(profile: str = "internet") -> dict:
+    """The saved identity, for editing in the About-you screen (empty when there is none yet)."""
+    try:
+        return config.read_identity(profile)
+    except config.ConfigError:
+        return {"keyword": "", "emails": [], "usernames": [], "owner": {}}
 
 
 # ---- setup status ------------------------------------------------------------------------------------
