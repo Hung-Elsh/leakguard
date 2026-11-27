@@ -162,3 +162,119 @@ def finding_sentence(f) -> str:
 
 def action_title(a) -> str:
     return ACTION_KIND.get(a["kind"], "{target}").format(target=a["target"] or "the site")
+
+
+# ---- the desktop app's screens -------------------------------------------------------------------
+NAV = {"overview": "Overview", "todo": "To do", "found": "Found", "cleanup": "Clean-up", "mail": "Mail",
+       "reports": "Reports"}
+SOON = "This part of the app arrives in the next update. Everything it will show is already being recorded."
+
+ABOUT_YOU = {
+    "title": "About you",
+    "intro": "Tell LeakGuard what to look for. This is the only setup you need: everything else is optional "
+             "and can be added later.",
+    "keyword": "Your keyword",
+    "keyword_help": "A word only you use, like a nickname you made up. We search for it to find your old "
+                    "addresses and accounts.",
+    "emails": "Your email addresses",
+    "emails_help": "One per line. The first one is your main address.",
+    "usernames": "Usernames (optional)",
+    "usernames_help": "Names you use on websites and games, one per line.",
+    "name": "Your name (optional)",
+    "name_help": "Used to sign the removal requests we write for you.",
+    "privacy": "Saved only on this computer. To look you up, each check service receives just the address "
+               "or name it checks.",
+    "save_first": "Save && start first check",
+    "save": "Save",
+    "bad_keyword": "Your keyword needs 4 to 64 letters or numbers (you can also use . _ and -).",
+    "no_email": "Add at least one email address.",
+    "bad_email": "This doesn't look like an email address: {value}",
+    "bad_username": "This doesn't look like a username: {value} (letters, numbers, . _ and - only)",
+}
+
+CHECK = {
+    "start": "Start check",
+    "stop": "Stop",
+    "stopping": "Stopping after the checks already running...",
+    "target_all": "Everything of mine",
+    "step_keyword": "Step 1 of 2: searching for your keyword",
+    "step_identities": "Step 2 of 2: checking your addresses and usernames",
+    "single": "Checking {value}",
+    "progress": "{done} of {total} done, now: {source}",
+    "finishing": "Finishing up: re-checking the removals that are due...",
+    "nothing_new": "Check finished. Nothing new.",
+    "new": "Check finished. {count} new {things} found.",
+    "serious": "{count} of them {look} serious. Have a look in To do.",
+    "candidates": "{count} new {addresses} might be yours. Have a look in To do.",
+    "problems": "{count} {services} didn't work this time. We'll try again next time.",
+    "gone": "{count} {things} no longer found. Good news.",
+    "stopped": "Check stopped. Everything that finished is saved.",
+    "failed": "The check couldn't run. The details are saved.",
+    "running": "A check is already running.",
+    "first_hint": "For the most complete results, run a Full check when you have half an hour.",
+}
+
+OVERVIEW = {
+    "cleaned": "{gone} of {total} cleaned up",
+    "cleaned_none": "Nothing found yet",
+    "needs_you": "{count} {things} need you",
+    "needs_you_none": "Nothing needs you right now.",
+    "waiting": "Waiting on {count} {sites}. Next follow-up {date}.",
+    "waiting_none": "Not waiting on any site.",
+    "card_needs": "Needs you",
+    "card_waiting": "Waiting for sites",
+    "card_open": "Still open",
+    "card_mail": "Mail blocked this week",
+    "open_line": "{high} serious, {medium} medium, {low} minor",
+    "mail_none": "Mail isn't connected yet.",
+    "details": "See details",
+    "trend": "Over time",
+    "trend_open": "Still open",
+    "trend_gone": "Gone",
+    "trend_wait": "The chart appears after your second check.",
+    "recent": "Recent changes",
+    "recent_none": "Nothing yet. Start a check to begin.",
+    "never": "No check yet",
+    "last_check": "Last check: {when}",
+}
+EVENT = {"found": "Found: {text}", "requested": "Request sent: {text}", "acknowledged": "The site replied: {text}",
+         "removed": "Removed: {text}", "verified": "Confirmed gone: {text}", "done": "Done: {text}"}
+PRACTICE = "Practice mode: made-up data, nothing leaves this computer."
+
+
+def plural(n: int, one: str, many: str | None = None) -> str:
+    return one if n == 1 else (many or one + "s")
+
+
+def ago(ts: str | None, now=None) -> str:
+    """'just now', '5 minutes ago', '2 hours ago', 'yesterday', '3 days ago', or a date."""
+    from datetime import datetime, timezone
+    if not ts:
+        return ""
+    t = datetime.fromisoformat(ts)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    secs = ((now or datetime.now(timezone.utc)) - t).total_seconds()
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        m = int(secs // 60)
+        return f"{m} {plural(m, 'minute')} ago"
+    if secs < 86400:
+        h = int(secs // 3600)
+        return f"{h} {plural(h, 'hour')} ago"
+    if secs < 172800:
+        return "yesterday"
+    if secs < 7 * 86400:
+        return f"{int(secs // 86400)} days ago"
+    return day(ts)
+
+
+def day(ts: str | None) -> str:
+    """'3 Dec' (and the year when it isn't this year)."""
+    from datetime import datetime, timezone
+    if not ts:
+        return ""
+    t = datetime.fromisoformat(ts)
+    this_year = datetime.now(timezone.utc).year
+    return f"{t.day} {t.strftime('%b')}" + ("" if t.year == this_year else f" {t.year}")
