@@ -42,6 +42,10 @@ class ScopeGuard:
         for sid, src in settings.sources.items():
             if src.get("allowed") and src.get("type") in ("api", "mail"):
                 self.hosts_by_source[sid] = list(src.get("hosts", []))
+        # the owner's own mail servers, set up in the app (mail.yaml): exactly those, for the "mail" source
+        for section in (settings.mail, (settings.removal or {}).get("smtp") or {}):
+            if section.get("owner_configured") and section.get("host") and "mail" in self.hosts_by_source:
+                self.hosts_by_source["mail"].append(section["host"])
         # broker search pages are allowed per broker entry in the profile
         broker_hosts = [urlsplit(b["search_url"]).hostname for b in settings.brokers if b.get("search_url")]
         self.hosts_by_source.setdefault("brokers", []).extend(h for h in broker_hosts if h)

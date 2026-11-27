@@ -40,7 +40,8 @@ class ImapBackend(MailBackend):
         host, port = cfg["host"], int(cfg.get("port", 993))
         guard.check_host(host, "mail")
         user = os.environ.get(cfg.get("user_env", ""), "") or cfg.get("user", "")
-        password = os.environ.get(cfg.get("password_env", ""), "") or cfg.get("password", "")
+        password = (settings.key(cfg["password_secret"]) if cfg.get("password_secret")     # app password (keyring)
+                    else os.environ.get(cfg.get("password_env", ""), "") or cfg.get("password", ""))
         if not user:
             raise ConfigError("IMAP user not set (profile mail.user or the env var in mail.user_env)")
         ctx = None
@@ -51,6 +52,7 @@ class ImapBackend(MailBackend):
         self.c = IMAPClient(host, port=port, ssl=bool(cfg.get("ssl")), ssl_context=ctx, timeout=30)
         self.c.login(user, password)
         self.delim = (self.c.list_folders()[0][1] or b".").decode() if self.c.list_folders() else "."
+        self._selected = "INBOX"            # apply() without a fetch first (the app moves what it previewed)
 
     def _folder(self, action: str) -> str:
         f = FOLDERS[action]

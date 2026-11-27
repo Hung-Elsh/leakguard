@@ -149,6 +149,9 @@ def load(profile: str | None = None) -> Settings:
         raise ConfigError(f"unknown profile {profile!r}; use one of {PROFILES}")
 
     prof = _expand_env(yaml.safe_load((CONFIG / "profiles" / f"{profile}.yaml").read_text()))
+    if profile == "internet":                         # the mail connection set up in the desktop app, if any
+        from .mail import connection
+        prof = connection.apply_to_profile(prof)
     ident = read_identity(profile)
     sources = {s["id"]: s for s in json.loads((CONFIG / "sources.json").read_text())["sources"]}
     seeds = ([{"value": e, "kind": "email", "proof": "owner-declared (leakguard init)"} for e in ident["emails"]]

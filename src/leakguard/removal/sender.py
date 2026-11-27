@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import smtplib
+import ssl
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -18,12 +19,30 @@ def load_draft(path: Path) -> EmailMessage:
     return BytesParser(policy=policy.default).parsebytes(path.read_bytes())
 
 
+def smtp_connection(cfg: dict, timeout: int = 30) -> smtplib.SMTP:
+    """SMTP with the configured security: ssl (implicit TLS), starttls, or plain (lab Mailpit only)."""
+    host, port, security = cfg["host"], int(cfg.get("port", 25)), cfg.get("security", "")
+    if security == "ssl":
+        return smtplib.SMTP_SSL(host, port, timeout=timeout, context=ssl.create_default_context())
+    s = smtplib.SMTP(host, port, timeout=timeout)
+    if security == "starttls":
+        s.starttls(context=ssl.create_default_context())
+    return s
+
+
 def send(settings: Settings, guard: ScopeGuard, msg: EmailMessage) -> str:
     how = settings.removal.get("sender")
     if how == "smtp":
         cfg = settings.removal["smtp"]
-        guard.check_host(cfg["host"], "mail")              # lab: must be inside 192.168.1.248/29
-        with smtplib.SMTP(cfg["host"], int(cfg.get("port", 25)), timeout=30) as s:
+        guard.check_host(cfg["host"], "mail")              # lab: inside 192.168.1.248/29; internet: the owner's server
+        user = cfg.get("user", "")
+        want = parseaddr(msg["From"])[1].lower()
+        if user and want != user.lower():                  # the server would refuse or rewrite the sender
+            raise DraftError(f"this request must come from {want}, but your mail is connected as {user}. "
+                             "Connect that address under Mail, or send the draft yourself from it.")
+        with smtp_connection(cfg) as s:
+            if user:
+                s.login(user, settings.key(cfg["password_secret"]) if cfg.get("password_secret") else "")
             refused = s.send_message(msg)
         if refused:
             raise RuntimeError(f"SMTP refused recipients: {refused}")
