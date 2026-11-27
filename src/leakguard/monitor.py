@@ -296,6 +296,9 @@ def schedule_files(profile: str, every: str, extra: str = "") -> dict[str, str]:
     if every not in CALENDAR:
         raise ValueError(f"--schedule must be one of {', '.join(CALENDAR)}")
     exe = ROOT / ".venv" / "bin" / "leakguard"
+    if not exe.exists():                                   # installed elsewhere: the leakguard next to this Python
+        import sys
+        exe = Path(sys.executable).parent / "leakguard"
     service = f"""[Unit]
 Description=LeakGuard monitor ({profile})
 

@@ -621,3 +621,137 @@ def ghunt_sign_in(code: str, timeout: int = 180) -> tuple[bool, str, str]:
     safe = "\n".join(line for line in out.splitlines()
                      if not re.search(r"token|=>|aas_et|oauth2_4", line, re.I) and code[:12] not in line)
     return ok, who, safe.strip()
+
+
+# ---- Reports ---------------------------------------------------------------------------------------------
+RUN_RANK = {"ok": 0, "skipped": 1, "partial": 2, "scope_blocked": 3, "error": 4}
+
+
+@dataclass
+class HealthRow:
+    """How one search service did the last time it ran (worst result across the identities it checked)."""
+    source: str
+    when: str
+    status: str
+    runs: list                                   # source_runs rows of that scan (full logged detail)
+
+    @property
+    def worst(self):
+        return max(self.runs, key=lambda r: RUN_RANK.get(r["status"], 0))
+
+
+def check_health(store: Store) -> list[HealthRow]:
+    rows = list(store.db.execute(
+        "SELECT r.*, s.started AS scan_started, i.value AS identity FROM source_runs r "
+        "JOIN scans s ON s.id = r.scan_id LEFT JOIN identities i ON i.id = r.identity_id "
+        "WHERE r.scan_id = (SELECT max(r2.scan_id) FROM source_runs r2 WHERE r2.source = r.source) "
+        "ORDER BY r.source"))
+    by_source: dict[str, list] = {}
+    for r in rows:
+        by_source.setdefault(r["source"], []).append(r)
+    out = [HealthRow(src, runs[0]["scan_started"] or "", max((r["status"] or "ok" for r in runs),
+                                                              key=lambda s: RUN_RANK.get(s, 0)), runs)
+           for src, runs in by_source.items()]
+    return sorted(out, key=lambda h: (-RUN_RANK.get(h.status, 0), h.source))
+
+
+def found_summary(store: Store) -> dict:
+    """Counted exposures by kind and seriousness, still there vs gone, and the owner's answers."""
+    from collections import Counter
+    fs = [f for f in store.findings() if f["severity"] != "info"]
+    by_kind: dict[str, Counter] = {}
+    for f in fs:
+        if (f["disposition"] or "open") in ("open", "protect"):
+            by_kind.setdefault(f["category"], Counter())[f["severity"] if f["status"] != "gone" else "gone"] += 1
+    return {"by_kind": by_kind, "answers": Counter(f["disposition"] or "open" for f in fs if f["reviewed"]),
+            "unanswered": sum(1 for f in fs if f["reviewed"] is None)}
+
+
+def cleanup_timeline(store: Store, limit: int = 200) -> list[tuple[str, object, dict]]:
+    """Every clean-up step's history, newest first: (timestamp, action row, history entry)."""
+    events = [(h["ts"], a, h) for a in store.actions() for h in json.loads(a["history"] or "[]")
+              if h["note"] not in ("plan",)]
+    return sorted(events, key=lambda e: e[0], reverse=True)[:limit]
+
+
+def mail_summary(store: Store, weeks: int = 12) -> dict:
+    """Moved messages per week (oldest first) and per reason."""
+    from collections import Counter
+    from datetime import date, timedelta
+    rows = list(store.db.execute("SELECT ts, rule, action FROM mail_log WHERE applied=1"))
+    monday = date.today() - timedelta(days=date.today().weekday())
+    starts = [monday - timedelta(weeks=n) for n in range(weeks - 1, -1, -1)]
+    per_week = Counter()
+    for r in rows:
+        d = date.fromisoformat(r["ts"][:10])
+        per_week[d - timedelta(days=d.weekday())] += 1
+    return {"weeks": [(s, per_week.get(s, 0)) for s in starts], "by_rule": Counter(r["rule"] for r in rows),
+            "total": len(rows)}
+
+
+def final_report(settings: config.Settings, store: Store, share: bool) -> str:
+    from . import report
+    return report.final_markdown(settings, store, share)
+
+
+def save_report(settings: config.Settings, store: Store, share: bool, dest: Path) -> Path:
+    """Write the final report to `dest` (mode 600). A shareable copy is refused if a private term is left."""
+    import shutil
+    from . import report
+    made = report.write_final(settings, store, share)        # does the private-term check for shared copies
+    dest = Path(dest)
+    shutil.copyfile(made, dest)
+    dest.chmod(0o600)
+    return dest
+
+
+# ---- automatic weekly check (user-level systemd timer; only when the owner turns it on) ------------------
+TIMER = "leakguard-monitor.timer"
+
+
+def _user_units() -> Path:
+    return Path.home() / ".config" / "systemd" / "user"
+
+
+def _systemctl(*args: str, timeout: int = 30):
+    import shutil
+    import subprocess
+    exe = shutil.which("systemctl")
+    if not exe:
+        raise RuntimeError("systemctl is not available")
+    return subprocess.run([exe, "--user", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def weekly_status() -> tuple[bool, str]:
+    """(on, next run as an ISO date or '')."""
+    import re
+    try:
+        enabled = _systemctl("is-enabled", TIMER).stdout.strip() == "enabled"
+        nxt = _systemctl("show", TIMER, "-p", "NextElapseUSecRealtime", "--value").stdout if enabled else ""
+    except (RuntimeError, OSError):
+        return False, ""
+    m = re.search(r"\d{4}-\d{2}-\d{2}", nxt or "")
+    return enabled, m.group(0) if m else ""
+
+
+def set_weekly(profile: str, on: bool) -> tuple[bool, str]:
+    """Turn the weekly check on (write the user units, enable the timer) or off (disable it; files stay).
+    Returns (ok, detail)."""
+    units = _user_units()
+    if on:
+        units.mkdir(parents=True, exist_ok=True)
+        for name, text in monitor.schedule_files(profile, "weekly").items():
+            (units / name).write_text(text)
+        steps = [("daemon-reload",), ("enable", "--now", TIMER)]
+    else:
+        steps = [("disable", "--now", TIMER)]
+    out = []
+    for step in steps:
+        try:
+            p = _systemctl(*step)
+        except (RuntimeError, OSError) as e:
+            return False, str(e)
+        out.append(f"$ systemctl --user {' '.join(step)}\n{p.stdout}{p.stderr}".strip())
+        if p.returncode != 0:
+            return False, "\n".join(out)
+    return True, "\n".join(out)
