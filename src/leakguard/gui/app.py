@@ -39,6 +39,14 @@ def add_to_menu() -> list[Path]:
     return [entry, icon]
 
 
+def desktop_entry_installed() -> bool:
+    """Is leakguard.desktop in one of the desktop's application folders (XDG data dirs)?"""
+    import os
+    dirs = [os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")]
+    dirs += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    return any((Path(d) / "applications" / "leakguard.desktop").exists() for d in dirs if d)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="leakguard-app", description="LeakGuard desktop app")
     ap.add_argument("--practice", action="store_true", help="practice mode: made-up person, lab services only")
@@ -55,9 +63,13 @@ def main(argv: list[str] | None = None) -> int:
     from .main_window import MainWindow
     from .wizard.about_you import AboutYouDialog
 
+    # Before the application exists: Qt registers the app ID with the desktop portal once, at start-up (setting it
+    # later made a second registration, which the portal refuses). The portal only accepts an ID that has a
+    # .desktop file, so claim "leakguard" only once --add-to-menu has installed one.
+    QApplication.setApplicationName("LeakGuard")
+    if desktop_entry_installed():
+        QApplication.setDesktopFileName("leakguard")
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("LeakGuard")
-    app.setDesktopFileName("leakguard")
     app.setStyle("Fusion")
     app.setWindowIcon(theme.app_icon())
     app.setStyleSheet(theme.stylesheet())

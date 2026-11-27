@@ -100,3 +100,14 @@ def test_send_needs_a_checked_address(qtbot, temp_data):
     d.build()
     assert "Send" in [b.text() for b in d.findChildren(QPushButton)]
     assert w.store.action(aid)["state"] == "drafted"                         # shown, not sent
+
+
+def test_app_id_only_with_an_installed_desktop_entry(tmp_path, monkeypatch):
+    """The desktop portal refuses an app ID without a .desktop file (it printed a warning on close)."""
+    from leakguard.gui import app
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "none"))
+    assert not app.desktop_entry_installed()
+    (tmp_path / "applications").mkdir()
+    (tmp_path / "applications" / "leakguard.desktop").write_text("[Desktop Entry]\n")
+    assert app.desktop_entry_installed()
