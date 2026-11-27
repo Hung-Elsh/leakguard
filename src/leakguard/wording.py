@@ -635,3 +635,48 @@ GHUNT = {
     "failed": "The sign-in didn't work. Copy a fresh code from the extension and try again.",
     "signed_in": "Signed in", "not_signed_in": "Not signed in", "button": "Sign in...",
 }
+
+
+# ---- Reports -------------------------------------------------------------------------------------------
+REPORTS = {
+    "intro": "A closer look at what was found, what was done, and how the checks are working.",
+    "tab_found": "What was found", "tab_cleanup": "Clean-up", "tab_mail": "Mail", "tab_health": "Check health",
+    "tab_trend": "Over time", "tab_final": "Final report",
+    "found_help": "Everything still counted, by kind and seriousness. Gone means a check no longer sees it.",
+    "gone": "Gone", "answers": "Your answers: {text}.", "unanswered": "{count} not answered yet (see To do).",
+    "cleanup_help": "Every step taken, newest first.",
+    "cleanup_counts": "{out} waiting for sites · {gone} confirmed gone · {done} done by you · {skipped} skipped",
+    "col_when": "When", "col_step": "Step", "col_what": "What happened", "col_note": "Note",
+    "mail_help": "Messages moved out of your inbox each week, and why.",
+    "mail_none": "No messages moved yet. Check your mail on the Mail page.",
+    "col_reason": "Reason", "col_count": "Messages", "week_of": "Week of",
+    "health_help": "How each search service did the last time it ran. Double-click one for the full details.",
+    "health_none": "No checks have run yet.",
+    "col_service": "Service", "col_last": "Last run", "col_result": "Result", "col_happened": "What happened",
+    "health_detail": "Details for {service}",
+    "col_for": "For", "col_detail": "Logged details",
+    "trend_help": "How many exposures were still open, and how many are gone, after each check.",
+    "trend_serious": "Serious, still open",
+    "final_help": "A summary you can keep, or share with someone helping you.",
+    "share": "Hide my names and addresses (for sharing)",
+    "save": "Save as...",
+    "saved": "Saved to {path}.",
+    "refused": "The shareable copy wasn't saved: some of your details were still in it. The details are saved.",
+}
+AUTO = {
+    "tab": "Automatic checks",
+    "switch": "Check for me every week",
+    "help": "Every Monday morning LeakGuard runs a full check by itself, even when the app is closed, and tells "
+            "you if something new turns up. It runs while you are logged in to this computer.",
+    "on": "On. Next check {date}.",
+    "on_soon": "On.",
+    "off": "Off. You can still check whenever you like.",
+    "failed": "That didn't work. The details are saved.",
+    "practice": "Not available in practice mode.",
+}
+NOTIFY = {
+    "open": "Open LeakGuard", "quick": "Start a quick check", "quit": "Quit",
+    "check_done": "Check finished",
+    "serious": "Something serious was found",
+    "removed": "Removal confirmed",
+}
