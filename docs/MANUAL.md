@@ -20,14 +20,18 @@ identity, no internet) or `-p internet` (your real data). Examples use `-p inter
 ## 1. Setup
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e '.[lab,browser,dev]'
-cp .env.example .env && chmod 600 .env
 python3 scripts/patch_ghunt.py
 .venv/bin/leakguard init
 .venv/bin/leakguard install-hook
+.venv/bin/leakguard keys set BRAVE_API_KEY      # asks for the key (hidden); repeat for each key you have
 .venv/bin/leakguard doctor -p internet
 ```
-- **`.env` keys:** `HIBP_API_KEY` (paid, best breach data), `INTELX_API_KEY` (free tier), `BRAVE_API_KEY` (web
+- **Keys:** `HIBP_API_KEY` (paid, best breach data), `INTELX_API_KEY` (free tier), `BRAVE_API_KEY` (web
   search, free tier), `GITHUB_TOKEN` (optional: code search, higher limits). Sources without their key are skipped.
+  `leakguard keys set NAME` saves a key in the **system keyring** (GNOME Keyring / KWallet: encrypted, unlocked
+  when you log in). Without a keyring it falls back to `~/.config/leakguard/secrets.env` (mode 600).
+  `leakguard keys` lists what is set and where from (never the values); `leakguard keys forget NAME` removes one.
+  Developers can still use a git-ignored `.env`; an environment variable wins over the keyring.
 - **External tools** (holehe, Sherlock, Maigret, GHunt, Blackbird, Mosint, socialscan, h8mail, SpiderFoot):
   `doctor` lists what is missing and the exact install command. GHunt also needs `ghunt login` (use a
   secondary Google account) and `scripts/patch_ghunt.py` after every GHunt install or upgrade.
@@ -127,8 +131,8 @@ leakguard remove check -p internet                  # re-scan everything waiting
 **Which address a request comes from.** Sites act only for the address a request is sent from: Intelligence X
 removed nothing for an address that was listed in a request sent from a different one. So an action about one
 email address is sent from that address, and `--confirm` refuses to send if Gmail is signed in to another
-account (it would silently change the sender). To send from another of your addresses, delete
-`~/.config/leakguard/gmail_token.json` and sign in again as that address, or send the draft yourself from it.
+account (it would silently change the sender). To send from another of your addresses, run
+`leakguard keys forget GMAIL_TOKEN` and sign in again as that address, or send the draft yourself from it.
 An address you can no longer sign in to cannot send its own request; recover it first (`remove status ID`
 shows the recovery hint).
 
@@ -244,8 +248,10 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
 | `leakcheck` fails before a commit | A file contains your private identity: remove it or git-ignore the file |
 
 ## 10. Data and privacy
-- Your identity, Gmail token and mail lists live in `~/.config/leakguard/`; scans, reports, drafts, screenshots
-  and raw tool output in `~/.local/share/leakguard/` (private permissions). None of it is in the repository.
+- Your identity and mail lists live in `~/.config/leakguard/`; scans, reports, drafts, screenshots and raw tool
+  output in `~/.local/share/leakguard/` (private permissions). None of it is in the repository.
+- Keys and the Gmail sign-in are in the system keyring (or the mode-600 fallback file), never in the database or
+  reports: the database only records which connections exist.
 - Leaked passwords are masked everywhere (findings, reports, drafts). API keys are masked in logs.
 - The claim gate: only claimed identities are scanned or cleaned. Nothing is sent or submitted without
   `--confirm`, and mail blocking is a dry run until `--apply`.

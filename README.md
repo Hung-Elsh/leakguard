@@ -39,17 +39,17 @@ keyword ─► discover (OSINT) ─► evaluate ─► your verdict ─► remov
 | What | Where |
 |---|---|
 | Your keyword, emails, usernames | `~/.config/leakguard/identities.yaml` (mode 600) |
-| Mail allow/block lists, Gmail OAuth token | `~/.config/leakguard/` |
+| Mail allow/block lists | `~/.config/leakguard/` |
 | Scan database, raw tool output, reports, drafts, screenshots, Takeout exports | `~/.local/share/leakguard/` |
-| API keys | `.env` (git-ignored) |
+| API keys, Gmail sign-in | system keyring (`leakguard keys`); without one, `~/.config/leakguard/secrets.env` (mode 600) |
 
 ## Setup
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e '.[lab,browser,dev]'
-cp .env.example .env && chmod 600 .env   # API keys: HIBP, IntelX, Brave, GitHub (optional)
 python3 scripts/patch_ghunt.py           # fixes GHunt 2.3.4 crashes (re-run after upgrading GHunt)
 .venv/bin/leakguard init                 # your keyword and emails
 .venv/bin/leakguard install-hook         # block commits that would leak them
+.venv/bin/leakguard keys set BRAVE_API_KEY   # API keys (HIBP, IntelX, Brave, GitHub; optional) go to the keyring
 .venv/bin/leakguard doctor -p internet   # tools installed? sources ready?
 ```
 
@@ -76,6 +76,7 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | Mail | `block [--apply] [--filters]` | Classify the inbox; move unwanted mail (dry run by default) |
 | | `lab-import MBOX` | Lab: load a Google Takeout copy of your mail |
 | Setup | `doctor` | External tools and source readiness |
+| | `keys [set NAME \| forget NAME]` | List, save or remove API keys and the Gmail sign-in (system keyring) |
 | | `leakcheck` / `install-hook` | Refuse commits that contain your private identity |
 
 ## Status
