@@ -39,6 +39,7 @@ keyword ─► discover (OSINT) ─► evaluate ─► your verdict ─► remov
 | What | Where |
 |---|---|
 | Your keyword, emails, usernames | `~/.config/leakguard/identities.yaml` (mode 600) |
+| Your own tools' definitions | `~/.config/leakguard/tools.d/` |
 | Mail allow/block lists, mail connection (`mail.yaml`, no passwords) | `~/.config/leakguard/` |
 | Scan database, raw tool output, reports, drafts, screenshots, Takeout exports | `~/.local/share/leakguard/` |
 | API keys, mail app password, Gmail sign-in | system keyring (`leakguard keys`); without one, `~/.config/leakguard/secrets.env` (mode 600) |
@@ -64,15 +65,16 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[gui,browser]'
 .venv/bin/leakguard-app --add-to-menu    # optional: add LeakGuard to your application menu (your user only)
 ```
 If it doesn't start and mentions "xcb", install Qt's one missing system library: `sudo apt install libxcb-cursor0`.
-What's there so far: first-run setup; Start check (quick or full, everything or one address) with progress and
-Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes); **To do**
+What's there so far: first-run setup; checks (quick or full, everything or one address; from the Overview, the
+File menu or the quick-access button) with progress and Stop; the Overview (cleaned-up ring, what needs you, what we're waiting for, trend, recent changes); **To do**
 (is this you, what should we do with each find, your clean-up steps, what's waiting on sites; one click each,
-with Undo); **Found** (everything found, searchable); **Clean-up** (every step, and adding a site we missed);
+with Undo); **Found items** (everything found, searchable); **Clean-up** (every step, and adding a site we missed);
 **Mail** (connect with an app password: Gmail, Yahoo, iCloud or your own servers; check, then move what you saw);
 **Settings** (search-service keys, each tested before it's saved; extra checks with one-click installs and the
 Google check's sign-in; a *Check every week* switch); **Reports** (what was found, the clean-up timeline, mail,
 check health, the trend, and the final report to save or share with your details hidden); desktop notifications
-from a tray icon. Emails, forms and mail moves happen only after a screen that shows exactly what happens.
+from a tray icon; **your own tools**: any command-line lookup tool, described once without Python
+([docs/ADD_A_TOOL.md](docs/ADD_A_TOOL.md)). Emails, forms and mail moves happen only after a screen that shows exactly what happens.
 *View → Show the command line* shows the same check as a `leakguard` command. More pages follow (see Status).
 
 ## Commands
@@ -110,4 +112,4 @@ All commands take `-p lab` (fictional identity, no internet) or `-p internet`. `
 | 3 | Removal workflow | done: lab + real plan; actions waiting on sites |
 | 4 | Monitor + scorecard | done: lab + two real runs; weekly timer ready |
 | 5 | Internet cleanup | in progress |
-| 6 | Desktop app (`native-app` branch) | G0-G4 done (window, Overview, To do, Found, Clean-up, Mail, Settings, Reports, notifications); G5 "add a tool" next |
+| 6 | Desktop app (`native-app` branch) | G0-G5 done (window, Overview, To do, Found, Clean-up, Mail, Settings, Reports, notifications, your own tools); G6 packaging later |

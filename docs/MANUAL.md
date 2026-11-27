@@ -260,13 +260,21 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
 
 ## 11. Desktop app
 `leakguard-app` is the same engine in a window (install with `pip install -e '.[gui]'`; see the README).
+- **Menus:** *File* (quick check Ctrl+R, full check Ctrl+Shift+R, check my mail Ctrl+M, save the final report
+  Ctrl+S, quit), *Edit* (undo your last answer Ctrl+Z, find in found items Ctrl+F), *View* (the pages, Ctrl+1 to
+  Ctrl+6; the command line; refresh), *Settings* (about you, mail connection, search services, extra checks,
+  automatic checks), *Add-ons* (add a tool, your own tools, the guide), *Help* (manual, the guide, about).
+- **Quick actions:** the round button in the bottom-right corner opens a small panel: quick check, full check,
+  check my mail, open To do; while a check runs, its progress and *Stop*. The Overview also has *Check now* and
+  *Full check* next to the cleaned-up ring.
 - **First run:** one *About you* screen (keyword, emails, optional usernames and name) and one button,
   *Save & start first check*. Edit it later under *LeakGuard → About you*. It writes the same private file as
   `leakguard init`.
-- **Checks:** pick *Check* (everything of yours, or one address or username) and *How* (Quick check: the fast
-  sources; Full check: every source). *Start check* shows progress in plain words; *Stop* drops the runs that
-  haven't started and keeps everything that finished. Same as `leakguard monitor [--quick]` or
-  `leakguard scan --identity VALUE` (*View → Show the command line* shows it).
+- **Checks:** *Check now* / *Full check* on the Overview, the *File* menu, or quick access (Quick check: the
+  fast sources; Full check: every source). Quick access also has *Check:* to check just one of your addresses or
+  usernames. Progress shows at the top in plain words; *Stop* drops the runs that haven't started and keeps
+  everything that finished. Same as `leakguard monitor [--quick]` or `leakguard scan --identity VALUE`
+  (*View → Show the command line* shows the command for the last check started).
 - **Overview:** how much is cleaned up, what needs you, what LeakGuard is waiting for (and the next follow-up
   date), what's still open by seriousness, mail blocked this week, a trend and recent changes. The numbers are the
   scorecard's (`leakguard report`).
@@ -284,21 +292,22 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
   4. *Waiting for sites* (folded): *They replied*, *Check now* (re-runs the checks that found it; confirmed gone
      when they no longer see it), *It's done*.
   Every answer shows a message with **Undo** (sending can't be undone, which is why it has its own review).
-- **Found:** everything found, with seriousness, where, when, whether it's still there and your answer. Search,
-  or show what's still there / everything / gone. Double-click a row to see it (leaked passwords stay masked),
-  open the page, or change your answer.
-- **Clean-up:** every step grouped as your turn, waiting for sites, done and confirmed, skipped (*Put back*
-  brings one back), each with its history. *Add a site we missed* = `leakguard remove add`.
+- **Found items:** everything found, with seriousness, where, when, whether it's still there and your answer.
+  Search (type, then Enter or the search button), and show *All* (the default), *Still there* or *Gone*. Drag a
+  column's edge to widen it; long text wraps, and the table scrolls sideways when needed. Double-click a row to
+  see it (leaked passwords stay masked), open the page, or change your answer.
+- **Clean-up:** *Add a site we missed* at the top (= `leakguard remove add`), then a tab per group: your turn,
+  waiting for sites, done and confirmed, skipped (*Put back* brings one back); each step has its history.
 - **Mail:** connect once, on one screen: your address (LeakGuard recognises Gmail, Yahoo and iCloud and shows
   that service's three steps to make an **app password**), the app password, *Test & save*. It logs in to read
   and to send without reading, moving or sending anything; only then is it saved (the password in the system
   keyring, the servers in `~/.config/leakguard/mail.yaml`). *Other mail service* takes your own servers;
   Outlook, Hotmail and Live no longer allow app passwords. *Use my own Google project* is the Gmail-API path the
   CLI uses (choose your client file; the next check signs in). LeakGuard may contact only the mail servers set
-  here. *Check my mail* (also under *How* in the toolbar) is a preview: what would move and why, in plain words.
+  here. *Check my mail* (also in the *File* menu and quick access) is a preview: what would move and why, in plain words.
   *Move N messages* asks first, then moves exactly those messages (Junk, Trash, or a review folder; nothing is
   deleted). Removal emails are sent from the connected address, and refused for any other address.
-- **Settings** (⚙, Ctrl+,):
+- **Settings** (the *Settings* menu; Ctrl+, opens Search services):
   - *Search services*: Have I Been Pwned, Intelligence X, Brave Search, GitHub. Each card says what it adds and
     what it costs, links to where you get the key, and *Test & save* tries the key with one small request before
     saving it in the keyring (= `leakguard keys set`). Keys from `.env` or the environment are only tested.
@@ -309,8 +318,13 @@ the tools that only talk to real sites, and a fictional identity (`zorblat`). Se
   - *Automatic checks*: one switch, *Check for me every week*. On writes a user-level systemd timer (Mondays
     around 09:00, `leakguard monitor`, the same files as `monitor --schedule weekly`) and enables it; off disables
     it. No admin rights; it runs while you are logged in. Off by default.
+  - *Your own tools* (bottom of *Extra checks*): *Add a tool...* describes any command-line lookup tool on one
+    screen (command with `{value}`, how it prints results, how to turn a result into a finding), *Test on my
+    email* runs it once, *Save* switches it on. Each card has *Switched on*, *Change...*, *Remove*. Step by step:
+    [ADD_A_TOOL.md](ADD_A_TOOL.md).
   - The Overview shows *Make checks better* while a search service or extra check is missing.
-- **Reports:** *What was found* (by kind and seriousness, and what's gone), *Clean-up* (every step's history),
+- **Reports** (always the last page in the sidebar): *Summary* (a ring chart of what was found, switched between
+  by kind, by seriousness, and still there or gone), *Clean-up* (every step's history),
   *Mail* (messages moved per week, and why), *Check health* (how each search service did the last time it ran,
   in plain words; double-click for the full logged detail: error, HTTP status, the service's reply), *Over time*
   (open, serious and gone after each check) and *Final report* (= `leakguard report --final`; *Hide my names and
