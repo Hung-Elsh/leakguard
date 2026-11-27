@@ -40,6 +40,8 @@ def find_binary(*candidates: str) -> str:
                 return str(p)
         elif found := shutil.which(c):
             return found
+        elif (local := Path.home() / ".local" / "bin" / c).exists():     # pipx installs from the desktop app,
+            return str(local)                                           # when the menu's PATH lacks ~/.local/bin
     raise ToolError(f"not installed: {candidates[0]} (run `leakguard doctor`)")
 
 

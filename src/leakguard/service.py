@@ -125,6 +125,8 @@ class Overview:
     last_check: str | None
     trend: list[dict]
     recent: list[tuple[str, str, object]]        # (timestamp, event, finding or action row), newest first
+    keys_missing: int = 0                        # search services not connected yet
+    tools_missing: int = 0                       # extra checks not installed (practice mode: none needed)
 
 
 def overview(settings: config.Settings, store: Store, recent: int = 8) -> Overview:
@@ -136,7 +138,9 @@ def overview(settings: config.Settings, store: Store, recent: int = 8) -> Overvi
                     next_follow_up=min(follow) if follow else None, mail_blocked_7d=sc["mail_blocked_7d"],
                     mail_connected=sc["mail_blocked_total"] > 0 or bool(settings.key("GMAIL_TOKEN"))
                     or bool(settings.key("MAIL_APP_PASSWORD")) or settings.is_lab,
-                    last_check=sc["last_scan"], trend=sc["trend"], recent=recent_changes(store, recent))
+                    last_check=sc["last_scan"], trend=sc["trend"], recent=recent_changes(store, recent),
+                    keys_missing=sum(not settings.key(k) for k in SEARCH_KEYS),
+                    tools_missing=0 if settings.is_lab else sum(not c.installed for c in tool_cards()))
 
 
 def recent_changes(store: Store, limit: int = 8) -> list[tuple[str, str, object]]:
@@ -359,3 +363,261 @@ def add_site(settings: config.Settings, store: Store, target: str, identity: str
         "steps": (e.steps if e else "") or "Find the site's account-deletion page or privacy contact."})
     store.set_action_state(aid, store.action(aid)["state"], f"added by owner: {why or 'known account'}")
     return aid, created
+
+
+# ---- mail: connect, check, move -------------------------------------------------------------------------
+@dataclass
+class MailStatus:
+    connected: bool
+    how: str                     # app_password | google | practice | ''
+    address: str = ""
+    provider: str = ""
+
+
+def mail_status(settings: config.Settings) -> MailStatus:
+    from .mail import connection
+    if settings.is_lab:
+        return MailStatus(True, "practice", settings.mail.get("user", ""), "practice mailbox")
+    cfg = connection.load() or {}
+    main = next((s["value"] for s in settings.seeds if s.get("kind") == "email"), "")
+    if cfg.get("backend") == "imap":
+        name = connection.PROVIDERS.get(cfg.get("provider", ""), {}).get("name", cfg["imap"]["host"])
+        return MailStatus(bool(settings.key(connection.SECRET)), "app_password", cfg["address"], name)
+    if (cfg.get("backend") or settings.mail.get("backend")) == "gmail":
+        return MailStatus(bool(settings.key("GMAIL_TOKEN")), "google", cfg.get("address") or main, "Gmail")
+    return MailStatus(False, "")
+
+
+@dataclass
+class MailTest:
+    ok: bool
+    problem: str = ""            # wording.MAIL_PROBLEM key
+    detail: str = ""
+
+
+def test_mail(settings: config.Settings, address: str, password: str, imap: tuple, smtp: tuple,
+              provider: str = "other") -> MailTest:
+    """Log in to read (IMAP) and to send (SMTP) with the app password. Nothing is read, moved or sent."""
+    import dataclasses
+    import smtplib
+    import ssl
+
+    from imapclient import IMAPClient
+    from imapclient.exceptions import LoginError
+
+    from .mail import connection
+    from .removal.sender import smtp_connection
+    from .scope import ScopeError, ScopeGuard
+    cfg = connection.app_password_config(address, imap, smtp, provider)
+    mail, removal = connection.profile_mail(cfg)
+    trial = dataclasses.replace(settings, mail=mail, removal={**(settings.removal or {}), **removal})
+    try:
+        guard = ScopeGuard(trial)
+        guard.check_host(mail["host"], "mail")
+        guard.check_host(removal["smtp"]["host"], "mail")
+        sec = cfg["imap"]["security"]
+        c = IMAPClient(mail["host"], port=mail["port"], ssl=sec == "ssl",
+                       ssl_context=ssl.create_default_context(), timeout=30)
+        try:
+            if sec == "starttls":
+                c.starttls(ssl.create_default_context())
+            c.login(cfg["address"], password)
+            c.select_folder("INBOX", readonly=True)
+        finally:
+            try:
+                c.logout()
+            except Exception:
+                pass
+        with smtp_connection(removal["smtp"]) as s:
+            s.login(cfg["address"], password)
+    except (LoginError, smtplib.SMTPAuthenticationError) as e:
+        return MailTest(False, "refused", f"{type(e).__name__}: {e}")
+    except ScopeError as e:
+        return MailTest(False, "blocked", str(e))
+    except (OSError, smtplib.SMTPException) as e:
+        return MailTest(False, "offline", f"{type(e).__name__}: {e}")
+    except Exception as e:                            # anything else: plain message, full detail kept
+        return MailTest(False, "other", f"{type(e).__name__}: {e}")
+    return MailTest(True)
+
+
+def connect_mail(settings: config.Settings, store: Store, address: str, password: str, imap: tuple, smtp: tuple,
+                 provider: str = "other") -> MailTest:
+    """Test, then save: the app password to the keyring, the servers to mail.yaml."""
+    from .mail import connection
+    password = password.replace(" ", "").strip()      # app passwords are shown in groups of four
+    result = test_mail(settings, address, password, imap, smtp, provider)
+    if result.ok:
+        keystore.store().set(connection.SECRET, password)
+        connection.save(connection.app_password_config(address, imap, smtp, provider))
+        store.set_connection(connection.SECRET, "ok")
+    return result
+
+
+def connect_google(store: Store, client_secret: Path, address: str) -> Path:
+    """Advanced: the owner's own Google project. The sign-in itself happens on the next mail check."""
+    import shutil
+    from . import paths
+    from .mail import connection, gmail_backend
+    dest = paths.USER_CONFIG / "client_secret.json"
+    if Path(client_secret).resolve() != dest.resolve():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(client_secret, dest)
+    dest.chmod(0o600)
+    gmail_backend.sign_out()                          # sign in again, with the account chosen now
+    keystore.store().delete(connection.SECRET)
+    connection.save({"backend": "gmail", "address": address.strip().lower()})
+    store.set_connection(gmail_backend.TOKEN_NAME)
+    return dest
+
+
+def disconnect_mail(store: Store) -> None:
+    from .mail import connection, gmail_backend
+    connection.remove()
+    for name in (connection.SECRET, gmail_backend.TOKEN_NAME):
+        keystore.store().delete(name)
+        store.forget_connection(name)
+
+
+def check_mail(settings: config.Settings, store: Store, since_days: int | None = 90, limit: int = 500):
+    """A dry run of the mail rules: what would be moved, and why. Nothing changes."""
+    from .mail import service as mail_service
+    return mail_service.run(settings, store, since_days=since_days, limit=limit)
+
+
+def apply_mail(settings: config.Settings, store: Store, rows: list) -> dict[str, int]:
+    """Move exactly the messages the owner saw in the preview (rows: (message, verdict), not 'keep')."""
+    from collections import defaultdict
+    from .mail.backend import make_backend
+    from .scope import ScopeGuard
+    by_action: dict[str, list] = defaultdict(list)
+    for m, v in rows:
+        if v.action != "keep":
+            by_action[v.action].append(m.uid)
+    backend = make_backend(settings, ScopeGuard(settings))
+    try:
+        moved = {action: backend.apply(action, uids) for action, uids in by_action.items()}
+    finally:
+        backend.close()
+    store.log_mail(settings.profile, [(m.message_id, m.from_addr, m.subject, v.rule, v.action)
+                                      for m, v in rows if v.action != "keep"], applied=True)
+    return moved
+
+
+# ---- search services: test a key before saving it -------------------------------------------------------
+SEARCH_KEYS = ("HIBP_API_KEY", "INTELX_API_KEY", "BRAVE_API_KEY", "GITHUB_TOKEN")
+KEY_SOURCE = {"HIBP_API_KEY": "hibp", "INTELX_API_KEY": "intelx", "BRAVE_API_KEY": "brave", "GITHUB_TOKEN": "github"}
+
+
+def test_key(settings: config.Settings, name: str, value: str) -> MailTest:
+    """One small request with the key (no search of the owner's data, except Brave's one-word query)."""
+    import httpx
+
+    from .models import redact
+    from .net import Http
+    from .scope import ScopeError, ScopeGuard
+    source = KEY_SOURCE[name]
+    base = settings.endpoints.get(source, "")
+    value = value.strip()
+    req = {"hibp": ("/subscription/status", {"hibp-api-key": value}, None),
+           "intelx": ("/authenticate/info", {"x-key": value}, None),
+           "brave": ("/web/search", {"X-Subscription-Token": value, "Accept": "application/json"},
+                     {"q": "leakguard", "count": 1}),
+           "github": ("/rate_limit", {"Authorization": f"Bearer {value}"}, None)}[source]
+    try:
+        with Http(settings, ScopeGuard(settings)).client(source, req[1], timeout=20) as c:
+            r = c.get(base + req[0], params=req[2])
+    except ScopeError as e:
+        return MailTest(False, "blocked", str(e))
+    except httpx.HTTPError as e:
+        return MailTest(False, "offline", redact(f"{type(e).__name__}: {e}", [value]))
+    if r.status_code == 200:
+        return MailTest(True)
+    kind = "refused" if r.status_code in (401, 403) else "busy" if r.status_code == 429 else "other"
+    return MailTest(False, kind, redact(f"HTTP {r.status_code}: {r.text[:300]}", [value]))
+
+
+def save_key(settings: config.Settings, store: Store, name: str, value: str) -> MailTest:
+    """Test, then save to the keyring (the database only records that it works)."""
+    result = test_key(settings, name, value)
+    if result.ok:
+        set_key(store, name, value)
+        store.set_connection(name, "ok")
+    return result
+
+
+# ---- extra checks (tools) ---------------------------------------------------------------------------------
+APP_TOOLS = ("holehe", "h8mail", "ghunt", "mosint", "socialscan", "sherlock", "maigret", "blackbird", "spiderfoot",
+             "chromium")                       # the tools the checks and opt-out forms use
+
+
+@dataclass
+class ToolCard:
+    name: str
+    path: str | None
+    pipx: str                                  # pinned spec for a one-click install ('' = by hand)
+    install: str                               # the command to run by hand
+
+    @property
+    def installed(self) -> bool:
+        return bool(self.path)
+
+
+def tool_cards() -> list[ToolCard]:
+    by_name = {t["name"]: t for t in json.loads((CONFIG / "tools.json").read_text())["tools"]}
+    out = []
+    for status in tool_status():
+        if status.name in APP_TOOLS:
+            t = by_name[status.name]
+            out.append(ToolCard(status.name, status.path, t.get("pipx", ""), t["install"]))
+    return sorted(out, key=lambda c: APP_TOOLS.index(c.name))
+
+
+def pipx_path() -> str | None:
+    import shutil
+    return shutil.which("pipx") or (str(p) if (p := Path.home() / ".local" / "bin" / "pipx").exists() else None)
+
+
+def install_tool(name: str, timeout: int = 1800) -> tuple[bool, str]:
+    """One-click install of a pinned tool with pipx (user-level: no admin rights). Returns (ok, output)."""
+    import subprocess
+    import sys
+
+    from .paths import ROOT
+    card = next(c for c in tool_cards() if c.name == name)
+    pipx = pipx_path()
+    if not card.pipx or not pipx:
+        return False, "pipx is not installed" if card.pipx else "no one-click install for this tool"
+    cmd = [pipx, "install", "--python", "3.12", "--fetch-missing-python", card.pipx]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    out = f"$ {' '.join(cmd)}\n{p.stdout}\n{p.stderr}".strip()
+    if p.returncode != 0 and "already seems to be installed" not in out:
+        return False, out
+    if name == "ghunt":                        # GHunt 2.3.4 needs its crash fixes
+        fix = subprocess.run([sys.executable, str(ROOT / "scripts" / "patch_ghunt.py")], capture_output=True,
+                             text=True, timeout=120)
+        out += f"\n$ patch_ghunt.py\n{fix.stdout}{fix.stderr}"
+    return True, out
+
+
+def ghunt_signed_in() -> bool:
+    return (Path.home() / ".malfrats" / "ghunt" / "creds.m").exists()
+
+
+def ghunt_sign_in(code: str, timeout: int = 180) -> tuple[bool, str, str]:
+    """Sign GHunt in with the code copied from the GHunt Companion extension (fed on stdin, never logged).
+    Returns (ok, signed-in address, detail with every token line removed)."""
+    import re
+    import subprocess
+
+    from .runner import find_binary
+    code = code.strip()
+    answers = ("y\n" if ghunt_signed_in() else "") + "2\n" + code + "\n"   # 'new session?' only if one exists
+    p = subprocess.run([find_binary("ghunt"), "login"], input=answers, capture_output=True, text=True,
+                       timeout=timeout)
+    out = f"{p.stdout}\n{p.stderr}"
+    who = (m.group(1).strip() if (m := re.search(r"Email\s*:\s*(\S+)", out)) else "")
+    ok = "Cookies and osids generated" in out
+    safe = "\n".join(line for line in out.splitlines()
+                     if not re.search(r"token|=>|aas_et|oauth2_4", line, re.I) and code[:12] not in line)
+    return ok, who, safe.strip()

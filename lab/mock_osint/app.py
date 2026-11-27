@@ -39,8 +39,12 @@ def save_state(s: dict) -> None:
     STATE_FILE.write_text(json.dumps(s, indent=2))
 
 
+WRONG_KEY = "wrong-key"         # the app's key test: this one is refused, like a mistyped key
+
+
 def need_key(header: str) -> None:
-    if not request.headers.get(header):
+    value = request.headers.get(header, "")
+    if not value or value.endswith(WRONG_KEY):
         abort(401)
 
 
@@ -58,6 +62,12 @@ def hibp_breaches(account):
     return jsonify(rows) if rows else ("", 404)
 
 
+@app.get("/hibp/api/v3/subscription/status")
+def hibp_subscription():
+    need_key("hibp-api-key")
+    return jsonify({"SubscriptionName": "Lab", "Rpm": 10})
+
+
 @app.get("/hibp/api/v3/pasteaccount/<path:account>")
 def hibp_pastes(account):
     need_key("hibp-api-key")
@@ -66,6 +76,12 @@ def hibp_pastes(account):
 
 
 # ---- IntelligenceX ---------------------------------------------------------------
+@app.get("/intelx/authenticate/info")
+def intelx_info():
+    need_key("x-key")
+    return jsonify({"paths": {"/intelligent/search": {"Credit": 50}}})
+
+
 @app.post("/intelx/intelligent/search")
 def intelx_search():
     need_key("x-key")
@@ -106,7 +122,7 @@ def pse():
 # ---- Brave Search API ------------------------------------------------------------------
 @app.get("/brave/res/v1/web/search")
 def brave():
-    if not request.headers.get("X-Subscription-Token"):
+    if request.headers.get("X-Subscription-Token", WRONG_KEY).endswith(WRONG_KEY):
         return jsonify({"type": "ErrorResponse", "error": {"code": "SUBSCRIPTION_TOKEN_INVALID"}}), 401
     term = _term(request.args.get("q", ""))
     offset, count = int(request.args.get("offset", 0)), int(request.args.get("count", 20))
@@ -157,6 +173,13 @@ def ubuntu_keyserver():
 
 
 # ---- GitHub REST search -------------------------------------------------------------
+@app.get("/github/rate_limit")
+def github_rate_limit():
+    if request.headers.get("Authorization", "").endswith(WRONG_KEY):
+        abort(401)
+    return jsonify({"resources": {"search": {"limit": 30, "remaining": 30}}})
+
+
 @app.get("/github/search/commits")
 def gh_commits():
     q = request.args.get("q", "")
