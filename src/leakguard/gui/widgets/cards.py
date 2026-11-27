@@ -6,7 +6,10 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPen
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
+from ... import wording
 from .. import theme
+
+TODO = wording.TODO
 
 
 def label(text: str = "", name: str = "", wrap: bool = True) -> QLabel:
@@ -106,12 +109,15 @@ class Toast(QFrame):
         lay.addWidget(close)
         self.timer = QTimer(self, singleShot=True, timeout=self.hide)
         self._action = None
+        self._undo = None                       # the last Undo offered: Edit > Undo can still use it
         self.button.clicked.connect(self._clicked)
         self.hide()
 
     def show_message(self, text: str, button: str = "", action=None, seconds: int = 8) -> None:
         self.text.setText(text)
         self._action = action
+        if action and button == TODO["undo"]:
+            self._undo = action
         self.button.setVisible(bool(button))
         self.button.setText(button)
         self.adjustSize()
@@ -122,8 +128,19 @@ class Toast(QFrame):
 
     def _clicked(self) -> None:
         if self._action:
+            if self._action is self._undo:
+                self._undo = None
             self._action()
         self.hide()
+
+    def undo_last(self) -> bool:
+        """Edit > Undo: undo the last answer that offered Undo (once)."""
+        if not self._undo:
+            return False
+        action, self._undo = self._undo, None
+        action()
+        self.hide()
+        return True
 
     def _place(self) -> None:
         par = self.parentWidget()

@@ -16,7 +16,7 @@ from ..widgets.cards import Card, Ring, label
 
 class OverviewPage(QScrollArea):
     navigate = Signal(str)                      # a page name from wording.NAV
-    setup = Signal()                            # "Make checks better": open Settings
+    check = Signal(str)                         # start a check: "quick" or "full"
 
     def __init__(self):
         super().__init__()
@@ -43,6 +43,17 @@ class OverviewPage(QScrollArea):
             words.addWidget(w)
         words.addStretch(1)
         h.addLayout(words, 1)
+        checks = QVBoxLayout()                          # the everyday action, right where the status is
+        self.check_now = button(T["check_now"], True)
+        self.check_full = button(T["check_full"])
+        self.check_now.clicked.connect(lambda: self.check.emit("quick"))
+        self.check_full.clicked.connect(lambda: self.check.emit("full"))
+        self.last_check = label("", "muted", wrap=False)
+        checks.addStretch(1)
+        for w in (self.check_now, self.check_full, self.last_check):
+            checks.addWidget(w)
+        checks.addStretch(1)
+        h.addLayout(checks)
         lay.addWidget(hero)
 
         self.better = QFrame()
@@ -50,11 +61,8 @@ class OverviewPage(QScrollArea):
         bl = QHBoxLayout(self.better)
         bl.setContentsMargins(16, 10, 16, 10)
         bl.addWidget(label(wording.SETTINGS["better"], "title", wrap=False))
-        self.better_line = label("", "muted")
+        self.better_line = label("", "muted")             # it says where: the Settings menu
         bl.addWidget(self.better_line, 1)
-        better_btn = button(wording.SETTINGS["better_button"])
-        better_btn.clicked.connect(self.setup)
-        bl.addWidget(better_btn)
         lay.addWidget(self.better)
 
         grid = QGridLayout()
@@ -98,6 +106,11 @@ class OverviewPage(QScrollArea):
         lower.addWidget(recent, 2)
         lay.addLayout(lower, 1)
 
+    def set_running(self, running: bool) -> None:
+        self.check_now.setEnabled(not running)
+        self.check_full.setEnabled(not running)
+        self.check_now.setText(T["checking"] if running else T["check_now"])
+
     # ---- data -----------------------------------------------------------------------------------
     def refresh(self, ov: service.Overview) -> None:
         self.ring.set(ov.pct)
@@ -120,6 +133,8 @@ class OverviewPage(QScrollArea):
             self.card_mail.set(str(ov.mail_blocked_7d))
         else:
             self.card_mail.set("-", T["mail_none"])
+        self.last_check.setText(T["last_check"].format(when=wording.ago(ov.last_check)) if ov.last_check
+                                else T["never"])
         self.better.setVisible(bool(ov.keys_missing or ov.tools_missing))
         S = wording.SETTINGS
         parts = ([S["better_keys"].format(count=ov.keys_missing, services=wording.plural(ov.keys_missing, "service"))]

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QIcon
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView,
-                               QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                               QLineEdit, QStyle, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
+                               QWidget)
 
 from ... import service, wording
 from ...models import scrub
@@ -15,6 +16,7 @@ from ..actions import button
 from ..widgets.cards import label
 
 COLUMNS = ("col_seriousness", "col_what", "col_where", "col_first", "col_status", "col_answer")
+WIDTHS = (100, 420, 150, 90, 90, 120)       # starting widths; drag a column edge to change one
 RANK = {"high": 3, "medium": 2, "low": 1, "info": 0}
 
 
@@ -41,10 +43,17 @@ class FoundPage(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText(FOUND["search"])
         self.search.setAccessibleName(FOUND["search"])
+        go = QToolButton()
+        go.setIcon(QIcon.fromTheme("edit-find", self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView)))
+        go.setToolTip(FOUND["search_go"])
+        go.setAccessibleName(FOUND["search_go"])
+        go.clicked.connect(lambda: self._filter(self.search.text()))
+        self.search.returnPressed.connect(lambda: self._filter(self.search.text()))
         self.show = QComboBox()
-        for key in ("show_open", "show_all", "show_gone"):
+        for key in ("show_all", "show_open", "show_gone"):          # all by default
             self.show.addItem(FOUND[key], key)
         bar.addWidget(self.search, 1)
+        bar.addWidget(go)
         bar.addWidget(self.show)
         lay.addLayout(bar)
         self.table = QTableWidget(0, len(COLUMNS))
@@ -52,11 +61,17 @@ class FoundPage(QWidget):
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setWordWrap(True)
+        self.table.setWordWrap(True)                      # long text goes on to the next line
+        self.table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.table.setSortingEnabled(True)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         h = self.table.horizontalHeader()
-        h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)   # drag an edge; the window keeps its size
+        h.setStretchLastSection(False)
+        h.setMinimumSectionSize(60)
+        for c, w in enumerate(WIDTHS):
+            self.table.setColumnWidth(c, w)
+        h.sectionResized.connect(lambda *_: self.table.resizeRowsToContents())
         self.table.doubleClicked.connect(self._open)
         lay.addWidget(self.table, 1)
         self.empty = label(FOUND["empty"], "muted")
@@ -89,6 +104,7 @@ class FoundPage(QWidget):
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
         self.table.sortItems(0, Qt.SortOrder.DescendingOrder)
+        self.table.resizeRowsToContents()
         self.empty.setVisible(not rows)
         self._filter(self.search.text())
 

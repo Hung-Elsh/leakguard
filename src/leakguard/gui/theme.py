@@ -30,13 +30,26 @@ def stylesheet() -> str:
     QLabel#muted {{ color: palette(placeholder-text); }}
     QLabel#error {{ color: {BAD}; }}
     QLabel#banner {{ background: {WARN}; color: black; padding: 6px 10px; border-radius: 6px; }}
-    QListWidget#nav {{ border: none; background: palette(window); font-size: 11pt; }}
-    QListWidget#nav::item {{ padding: 9px 14px; border-radius: 6px; }}
-    QListWidget#nav::item:selected {{ background: palette(highlight); color: palette(highlighted-text); }}
-    QPushButton#primary {{ background: {ACCENT}; color: white; border: none; border-radius: 6px;
-                          padding: 7px 18px; font-weight: 600; }}
-    QPushButton#primary:disabled {{ background: palette(mid); }}
-    QPushButton#link {{ border: none; color: {ACCENT}; text-align: left; padding: 0; }}
+    QPushButton {{ padding: 5px 14px; border: 1px solid palette(mid); border-radius: 6px;
+                  background: palette(button); color: palette(button-text); min-height: 20px; }}
+    QPushButton:hover {{ border-color: {ACCENT}; }}
+    QPushButton:pressed {{ background: palette(midlight); }}
+    QPushButton:disabled {{ color: palette(placeholder-text); }}
+    QPushButton:checked {{ background: palette(highlight); color: palette(highlighted-text);
+                          border-color: palette(highlight); }}
+    QPushButton#primary {{ background: {ACCENT}; color: white; border: 1px solid {ACCENT}; }}
+    QPushButton#primary:hover {{ background: #2f6bd0; }}
+    QPushButton#primary:disabled {{ background: palette(mid); border-color: palette(mid); }}
+    QPushButton#link {{ border: none; background: transparent; color: {ACCENT}; text-align: left; padding: 0;
+                       min-height: 0; }}
+    QPushButton#nav {{ border: none; background: transparent; text-align: left; padding: 9px 14px;
+                      font-size: 11pt; border-radius: 6px; }}
+    QPushButton#nav:hover {{ background: palette(midlight); }}
+    QPushButton#nav:checked {{ background: palette(highlight); color: palette(highlighted-text); }}
+    QPushButton#fab {{ background: {ACCENT}; color: white; border: none; border-radius: 26px; font-size: 18pt;
+                      padding: 0; min-height: 0; }}
+    QPushButton#fab:hover {{ background: #2f6bd0; }}
+    QFrame#quick {{ background: palette(base); border: 1px solid {ACCENT}; border-radius: 12px; }}
     QFrame#toast {{ background: palette(base); border: 1px solid {ACCENT}; border-radius: 8px; }}
     QLabel#lead {{ font-size: 12pt; font-weight: 600; }}
     """

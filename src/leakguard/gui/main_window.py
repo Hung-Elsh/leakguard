@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import shlex
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-                               QMessageBox, QProgressBar, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
+from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLineEdit, QMainWindow, QMessageBox,
+                               QProgressBar, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import config, monitor, service, wording
-from ..plugins import ALL_PLUGINS
+from ..plugins import active
 from ..wording import CHECK as C
 from . import theme, worker
 from .actions import ActionController
@@ -22,9 +22,12 @@ from .pages.reports import ReportsPage
 from .pages.soon import SoonPage
 from .pages.todo import TodoPage
 from .widgets.cards import Toast, label
+from .widgets.quick import QuickAccess
 from .wizard.about_you import AboutYouDialog
 
 PAGES = ("overview", "todo", "found", "cleanup", "mail", "reports")
+PINNED_LAST = "reports"            # always at the bottom of the sidebar, whatever pages are added above it
+M = wording.MENU
 
 
 class MainWindow(QMainWindow):
@@ -51,64 +54,44 @@ class MainWindow(QMainWindow):
         if self.settings.is_lab:
             root.addWidget(label(wording.PRACTICE, "banner"))
 
-        # what to check, how, Start
-        bar = QHBoxLayout()
-        bar.addWidget(label("Check:", wrap=False))
-        self.target = QComboBox()
-        self.target.setAccessibleName("What to check")
-        self.target.setMinimumWidth(240)
-        bar.addWidget(self.target)
-        bar.addSpacing(12)
-        bar.addWidget(label("How:", wrap=False))
-        self.kind = QComboBox()
-        self.kind.setAccessibleName("How to check")
-        for k in (*service.CHECK_KINDS, "mail"):
-            self.kind.addItem(wording.CHECK_KIND[k], k)
-            self.kind.setItemData(self.kind.count() - 1, wording.CHECK_KIND_HELP[k], Qt.ItemDataRole.ToolTipRole)
-        bar.addWidget(self.kind)
-        self.kind_help = label("", "muted", wrap=False)
-        bar.addWidget(self.kind_help)
-        bar.addStretch(1)
-        self.start_btn = QPushButton(C["start"])
-        self.start_btn.setObjectName("primary")
-        self.start_btn.setShortcut(QKeySequence("Ctrl+R"))
-        self.start_btn.clicked.connect(self._start_or_stop)
-        bar.addWidget(self.start_btn)
-        gear = QPushButton("⚙")
-        gear.setToolTip(wording.SETTINGS["title"])
-        gear.setAccessibleName(wording.SETTINGS["title"])
-        gear.setFixedWidth(36)
-        gear.clicked.connect(self.open_settings)
-        bar.addWidget(gear)
-        root.addLayout(bar)
-
-        # the equivalent command (Advanced), like Zenmap's command line
-        self.command = QLineEdit()
+        # the equivalent command (View > Show the command line), like Zenmap's: the last check started
+        self.command = QLineEdit(command_for("quick", None, self.profile, self.settings))
         self.command.setReadOnly(True)
         self.command.setAccessibleName("The same check from the command line")
         self.command.hide()
         root.addWidget(self.command)
 
-        # progress (only while a check runs)
+        # progress, with Stop (only while a check runs); checks start from the Overview, the menu or quick access
         self.progress_box = QWidget()
-        pl = QVBoxLayout(self.progress_box)
+        pl = QHBoxLayout(self.progress_box)
         pl.setContentsMargins(0, 0, 0, 0)
+        words = QVBoxLayout()
         self.step = label("", "title")
         self.bar = QProgressBar()
         self.bar.setTextVisible(False)
         self.bar.setMaximumHeight(10)
         self.detail = label("", "muted")
         for w in (self.step, self.bar, self.detail):
-            pl.addWidget(w)
+            words.addWidget(w)
+        pl.addLayout(words, 1)
+        self.stop_btn = QPushButton(C["stop"])
+        self.stop_btn.clicked.connect(self.stop_check)
+        pl.addWidget(self.stop_btn)
         self.progress_box.hide()
         root.addWidget(self.progress_box)
+        self._ident: str | None = None                  # the running check's single address, if any
 
         # pages
         body = QHBoxLayout()
-        self.nav = QListWidget()
-        self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(190)
-        self.nav.setAccessibleName("Pages")
+        side = QWidget()
+        side.setFixedWidth(190)
+        side.setAccessibleName("Pages")
+        nav = QVBoxLayout(side)
+        nav.setContentsMargins(0, 0, 0, 0)
+        nav.setSpacing(2)
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.setExclusive(True)
+        self.nav_buttons: dict[str, QPushButton] = {}
         self.stack = QStackedWidget()
         self.pages = {}
         for name in PAGES:
@@ -117,13 +100,22 @@ class MainWindow(QMainWindow):
             page = (page() if name == "overview" else page(self)) if page else SoonPage(wording.NAV[name])
             if name == "overview":
                 page.navigate.connect(self.show_page)
-                page.setup.connect(self.open_settings)
+                page.check.connect(lambda kind: self.start_check(kind))
             self.pages[name] = page
             self.stack.addWidget(page)
-            self.nav.addItem(QListWidgetItem(wording.NAV[name]))
-        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.nav.setCurrentRow(0)
-        body.addWidget(self.nav)
+            b = QPushButton(wording.NAV[name])
+            b.setObjectName("nav")
+            b.setCheckable(True)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _=False, n=name: self.show_page(n))
+            self.nav_group.addButton(b)
+            self.nav_buttons[name] = b
+        for name in PAGES:
+            if name != PINNED_LAST:
+                nav.addWidget(self.nav_buttons[name])
+        nav.addStretch(1)
+        nav.addWidget(self.nav_buttons[PINNED_LAST])
+        body.addWidget(side)
         body.addWidget(self.stack, 1)
         root.addLayout(body, 1)
 
@@ -132,136 +124,165 @@ class MainWindow(QMainWindow):
         self.toast = Toast(central)
         from .notify import Notifier
         self.notifier = Notifier(self)
+        self.quick = QuickAccess(self, central)
         self._menus()
+        self.show_page("overview")
 
-        self.target.currentIndexChanged.connect(self._update_command)
-        self.kind.currentIndexChanged.connect(self._update_command)
         self.refresh()
 
-    # ---- menus ------------------------------------------------------------------------------------
+    # ---- menus: File, Edit, View, Settings, Add-ons, Help ---------------------------------------------
     def _menus(self) -> None:
-        m = self.menuBar().addMenu("&LeakGuard")
-        about = QAction("About you...", self, triggered=self._edit_identity)
-        about.setEnabled(not self.settings.is_lab)          # practice mode uses its made-up person
-        m.addAction(about)
-        m.addAction(QAction(wording.SETTINGS["title"] + "...", self, shortcut=QKeySequence("Ctrl+,"),
-                            triggered=self.open_settings))
-        m.addSeparator()
-        m.addAction(QAction("Quit", self, shortcut=QKeySequence.StandardKey.Quit, triggered=self.close))
-        v = self.menuBar().addMenu("&View")
-        self.show_command = QAction("Show the command line (advanced)", self, checkable=True,
-                                    toggled=self.command.setVisible)
+        def act(menu, text, fn, shortcut=None, enabled=True):
+            a = QAction(text, self, triggered=lambda *_: fn())
+            if shortcut:
+                a.setShortcut(QKeySequence(shortcut))
+            a.setEnabled(enabled)
+            menu.addAction(a)
+            return a
+        bar, lab = self.menuBar(), self.settings.is_lab
+        f = bar.addMenu(M["file"])
+        act(f, M["quick"], lambda: self.start_check("quick"), "Ctrl+R")
+        act(f, M["full"], lambda: self.start_check("full"), "Ctrl+Shift+R")
+        act(f, M["mail"], lambda: self.start_check("mail"), "Ctrl+M")
+        f.addSeparator()
+        act(f, M["report"], self._save_report, "Ctrl+S")
+        f.addSeparator()
+        f.addAction(QAction(M["quit"], self, shortcut=QKeySequence.StandardKey.Quit, triggered=self.close))
+        e = bar.addMenu(M["edit"])
+        act(e, M["undo"], self._undo, QKeySequence.StandardKey.Undo)
+        act(e, M["find"], self._find, QKeySequence.StandardKey.Find)
+        v = bar.addMenu(M["view"])
+        for n, name in enumerate(PAGES, 1):
+            act(v, wording.NAV[name], lambda name=name: self.show_page(name), f"Ctrl+{n}")
+        v.addSeparator()
+        self.show_command = QAction(M["command"], self, checkable=True, toggled=self.command.setVisible)
         v.addAction(self.show_command)
-        v.addAction(QAction("Refresh", self, shortcut=QKeySequence.StandardKey.Refresh, triggered=self.refresh))
+        act(v, M["refresh"], self.refresh, QKeySequence.StandardKey.Refresh)
+        s = bar.addMenu(M["settings"])
+        act(s, M["about_you"], self._edit_identity, enabled=not lab)   # practice mode uses its made-up person
+        act(s, M["mail_connection"], lambda: self.show_page("mail"))
+        act(s, M["services"], lambda: self.open_settings("services"), "Ctrl+,")
+        act(s, M["tools"], lambda: self.open_settings("tools"))
+        act(s, M["auto"], lambda: self.open_settings("auto"))
+        a = bar.addMenu(M["addons"])
+        act(a, M["add_tool"], self._add_tool)
+        act(a, M["my_tools"], lambda: self.open_settings("tools"))
+        act(a, M["tool_guide"], lambda: self._open_doc("ADD_A_TOOL.md"))
+        h = bar.addMenu(M["help"])
+        act(h, M["manual"], lambda: self._open_doc("MANUAL.md"), QKeySequence.StandardKey.HelpContents)
+        act(h, M["tool_guide"], lambda: self._open_doc("ADD_A_TOOL.md"))
+        h.addSeparator()
+        act(h, M["about"], self._about)
 
     def show_page(self, name: str) -> None:
-        self.nav.setCurrentRow(PAGES.index(name))
+        self.stack.setCurrentIndex(PAGES.index(name))
+        self.nav_buttons[name].setChecked(True)
+
+    def _undo(self) -> None:
+        if not self.toast.undo_last():
+            self.toast.show_message(M["nothing_to_undo"])
+
+    def _find(self) -> None:
+        self.show_page("found")
+        self.pages["found"].search.setFocus()
+
+    def _save_report(self) -> None:
+        self.show_page("reports")
+        self.pages["reports"].save_report()
+
+    def _add_tool(self) -> None:
+        from .add_tool import AddToolDialog
+        if AddToolDialog(self).exec():
+            self.changed()
+
+    def _open_doc(self, name: str) -> None:
+        from ..paths import ROOT
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT / "docs" / name)))
+
+    def _about(self) -> None:
+        from .. import __version__
+        QMessageBox.about(self, M["about"].replace("&", ""), M["about_text"].format(version=__version__))
 
     # ---- data -------------------------------------------------------------------------------------
     def refresh(self) -> None:
         ov = service.overview(self.settings, self.store)
         for page in self.pages.values():
             page.refresh(ov)
-        self.nav.item(PAGES.index("todo")).setText(f"{wording.NAV['todo']} ({ov.needs_you})" if ov.needs_you
-                                                    else wording.NAV["todo"])
+        self.nav_buttons["todo"].setText(f"{wording.NAV['todo']} ({ov.needs_you})" if ov.needs_you
+                                         else wording.NAV["todo"])
         parts = [wording.OVERVIEW["last_check"].format(when=wording.ago(ov.last_check))
                  if ov.last_check else wording.OVERVIEW["never"]]
         parts.append(wording.OVERVIEW["waiting"].format(count=ov.waiting, sites=wording.plural(ov.waiting, "site"),
                                                        date=wording.day(ov.next_follow_up) or "soon")
                      if ov.waiting else wording.OVERVIEW["waiting_none"])
         self.status.setText("   ·   ".join(parts))
-        self._fill_targets()
-
-    def _fill_targets(self) -> None:
-        current = self.target.currentData()
-        self.target.blockSignals(True)
-        self.target.clear()
-        self.target.addItem(C["target_all"], None)
-        for i in self.store.identities("claimed"):
-            if i.kind != "keyword":
-                self.target.addItem(i.value, i.value)
-        idx = self.target.findData(current)
-        self.target.setCurrentIndex(max(idx, 0))
-        self.target.blockSignals(False)
-        self._update_command()
-
-    def _update_command(self) -> None:
-        kind, ident = self.kind.currentData(), self.target.currentData()
-        self.kind_help.setText(wording.CHECK_KIND_HELP.get(kind, ""))
-        p = ["-p", self.profile]
-        self.target.setEnabled(kind != "mail" and not self.job)
-        if kind == "mail":
-            cmd = ["leakguard", "block", *p]
-        elif ident:
-            cmd = ["leakguard", "scan", "--identity", ident, *p]
-            if kind == "quick":
-                cmd += [a for s in ALL_PLUGINS if s.name not in monitor.SLOW_TOOLS for a in ("-s", s.name)]
-        else:
-            cmd = ["leakguard", "monitor", *(["--quick"] if kind == "quick" else []), *p]
-        self.command.setText(shlex.join(cmd))
+        self.quick.fill_targets([i.value for i in self.store.identities("claimed") if i.kind != "keyword"])
+        self.quick.update_state(ov.needs_you)
 
     # ---- checks -----------------------------------------------------------------------------------
-    def _start_or_stop(self) -> None:
+    def stop_check(self) -> None:
         if self.job:
             self.job.cancel.set()
-            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
             self.detail.setText(C["stopping"])
-        else:
-            self.start_check()
 
-    def start_check(self, kind: str | None = None, first_run: bool = False) -> None:
+    def _start_or_stop(self) -> None:                     # kept for the quick panel's Stop
+        self.stop_check()
+
+    def start_check(self, kind: str = "quick", first_run: bool = False, identity: str | None = None) -> None:
+        """kind: quick | full | mail. identity: one claimed address or username (quick access), else everything."""
         if self.job:
             self.toast.show_message(C["running"])
             return
-        if kind:
-            self.kind.setCurrentIndex(self.kind.findData(kind))
-        kind, ident, profile = self.kind.currentData(), self.target.currentData(), self.profile
+        kind = kind or "quick"
+        self.command.setText(command_for(kind, identity, self.profile, self.settings))
         if kind == "mail":                                # the mail page runs it and shows the preview
             self.show_page("mail")
             self.pages["mail"].check()
             return
-        self._first_run = first_run
+        profile, self._first_run, self._ident = self.profile, first_run, identity
 
         def run(progress, cancel):
             s, st = service.open_profile(profile)          # this thread's own connection
-            return service.run_check(s, st, kind, progress, cancel, ident)
+            return service.run_check(s, st, kind, progress, cancel, identity)
 
         self.job = worker.Job(run, self.settings.secret_values())
         self.job.signals.progress.connect(self._progress)
         self.job.signals.done.connect(self._done)
         self.job.signals.failed.connect(self._failed)
         self._stage, self._last_done = 1, 0
-        self.step.setText(C["single"].format(value=ident) if ident else C["step_keyword"])
+        self.step.setText(C["single"].format(value=identity) if identity else C["step_keyword"])
         self.detail.setText("")
         self.bar.setRange(0, 0)                            # busy until the first result arrives
+        self.stop_btn.setEnabled(True)
         self.progress_box.show()
-        self.start_btn.setText(C["stop"])
-        self.target.setEnabled(False)
-        self.kind.setEnabled(False)
+        self.pages["overview"].set_running(True)
+        self.quick.update_state()
         worker.start(self.job)
 
     def _progress(self, done: int, total: int, source: str, _identity: str, _status: str) -> None:
         if done < self._last_done:                         # the second stage started
             self._stage = 2
-            if not self.target.currentData():
+            if not self._ident:
                 self.step.setText(C["step_identities"])
         self._last_done = done
         self.bar.setRange(0, total)
         self.bar.setValue(done)
         self.detail.setText(C["progress"].format(done=done, total=total,
                                                  source=wording.SOURCE.get(source, source)))
-        if done == total and (self._stage == 2 or self.target.currentData()):
+        if done == total and (self._stage == 2 or self._ident):
             self.bar.setRange(0, 0)
             self.detail.setText(C["finishing"])
+        if self.quick.panel.isVisible():
+            self.quick.update_state()
 
     def _finish(self) -> None:
         self.job = None
+        self._ident = None
         self.progress_box.hide()
-        self.start_btn.setText(C["start"])
-        self.start_btn.setEnabled(True)
-        self.target.setEnabled(True)
-        self.kind.setEnabled(True)
+        self.pages["overview"].set_running(False)
         self.refresh()
+        self.quick.update_state()
 
     def _done(self, res: service.CheckResult) -> None:
         self._finish()
@@ -335,8 +356,24 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        if hasattr(self, "quick"):
+            self.quick.place()
         if self.toast.isVisible():
             QTimer.singleShot(0, self.toast._place)
+
+
+def command_for(kind: str, identity: str | None, profile: str, settings) -> str:
+    """The same check as a leakguard command (View > Show the command line)."""
+    p = ["-p", profile]
+    if kind == "mail":
+        cmd = ["leakguard", "block", *p]
+    elif identity:
+        cmd = ["leakguard", "scan", "--identity", identity, *p]
+        if kind == "quick":
+            cmd += [a for s in active(settings) if s.name not in monitor.SLOW_TOOLS for a in ("-s", s.name)]
+    else:
+        cmd = ["leakguard", "monitor", *(["--quick"] if kind == "quick" else []), *p]
+    return shlex.join(cmd)
 
 
 def check_summary(res: service.CheckResult, first_run: bool = False) -> list[str]:

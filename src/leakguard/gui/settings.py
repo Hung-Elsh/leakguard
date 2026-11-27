@@ -169,7 +169,61 @@ class ToolsTab(QWidget):
             lay.addWidget(f)
         for c in cards:
             lay.addWidget(ToolCardWidget(win, c))
+        self._custom(lay)
         lay.addStretch(1)
+
+    def _custom(self, lay) -> None:
+        """Your own tools: switch on/off, change, remove, or add one (custom_tools.py)."""
+        from .. import custom_tools
+        from ..wording import CUSTOM
+        from .add_tool import AddToolDialog
+        lay.addSpacing(12)
+        head = QHBoxLayout()
+        head.addWidget(label(CUSTOM["section"], "big"), 1)
+        add = button(CUSTOM["add"], True)
+        add.clicked.connect(lambda: self._edit(AddToolDialog(self.win)))
+        head.addWidget(add)
+        lay.addLayout(head)
+        lay.addWidget(label(CUSTOM["section_help"], "muted"))
+        mine = custom_tools.load("lab" if self.win.settings.is_lab else "user")
+        if not mine:
+            lay.addWidget(label(CUSTOM["none"], "muted"))
+        for m in mine:
+            f, cl = _card()
+            row = QHBoxLayout()
+            row.addWidget(label(m.get("name", m.get("id", "?")), "title"), 1)
+            if m.get("_origin") == "user":
+                on = QCheckBox(CUSTOM["on"])
+                on.setChecked(bool(m.get("enabled")))
+                on.toggled.connect(lambda checked, tid=m["id"]: (service.switch_tool(tid, checked), self.win.changed()))
+                change, remove = button(CUSTOM["edit"]), button(CUSTOM["remove"])
+                change.clicked.connect(lambda _=False, m=m: self._edit(AddToolDialog(self.win, m)))
+                remove.clicked.connect(lambda _=False, m=m: self._remove(m))
+                for w in (on, change, remove):
+                    row.addWidget(w)
+            cl.addLayout(row)
+            cl.addWidget(label(m.get("about", ""), "muted"))
+            problems = custom_tools.problems(m, service.builtin_ids())
+            if problems:
+                cl.addWidget(label("\n".join(problems), "error"))
+            elif m.get("_origin") == "lab":
+                cl.addWidget(label(CUSTOM["practice_example"], "muted"))
+            lay.addWidget(f)
+
+    def _edit(self, dialog) -> None:
+        if dialog.exec():
+            self._rebuild()
+
+    def _remove(self, m) -> None:
+        from ..wording import CUSTOM
+        service.remove_tool(m["id"])
+        self.win.toast.show_message(CUSTOM["removed"].format(name=m.get("name", m["id"])))
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        self.win.changed()
+        scroll = self.parentWidget().parentWidget()      # the tab's scroll area: show the new list
+        scroll.setWidget(ToolsTab(self.win))
 
 
 def _command(cmd: str) -> QWidget:

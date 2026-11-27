@@ -1,8 +1,9 @@
-"""Clean-up: every step, grouped by where it stands, and a way to add a site no check found."""
+"""Clean-up: add a site no check found (always at the top), then every step in tabs by where it stands."""
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLineEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLineEdit, QScrollArea, QTabWidget, QVBoxLayout,
+                               QWidget)
 
 from ... import service, wording
 from ...wording import CLEANUP
@@ -13,67 +14,80 @@ GROUPS = (("your_turn", ("planned", "drafted")), ("waiting", ("requested", "ackn
           ("finished", ("verified", "done")), ("skipped", ("skipped",)))
 
 
-class CleanupPage(QScrollArea):
+class CleanupPage(QWidget):
     def __init__(self, win):
         super().__init__()
         self.win = win
-        self.setWidgetResizable(True)
-        self.setFrameShape(QFrame.Shape.NoFrame)
-        self.body = QWidget()
-        self.setWidget(self.body)
-
-    def refresh(self, _overview=None) -> None:
-        pos = self.verticalScrollBar().value()
-        self.body = QWidget()
-        lay = QVBoxLayout(self.body)
-        lay.setContentsMargins(24, 20, 24, 24)
-        lay.setSpacing(10)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 20, 24, 16)
+        lay.setSpacing(8)
         lay.addWidget(label(wording.NAV["cleanup"], "hero"))
         lay.addWidget(label(CLEANUP["intro"], "muted"))
-        actions = self.win.store.actions()
-        if not actions:
-            lay.addWidget(label(CLEANUP["empty"], "lead"))
-        for key, states in GROUPS:
-            rows = [a for a in actions if a["state"] in states]
-            if not rows:
-                continue
-            lay.addSpacing(10)
-            lay.addWidget(label(f"{CLEANUP[key]} ({len(rows)})", "big"))
-            for a in rows:
-                lay.addWidget(ActionCard(self.win.actions, a))
         self._add_form(lay)
-        lay.addStretch(1)
-        self.setWidget(self.body)                       # the scroll area deletes the previous body
-        self.verticalScrollBar().setValue(pos)
+        self.tabs = QTabWidget()
+        lay.addWidget(self.tabs, 1)
 
-    def _add_form(self, lay) -> None:
-        lay.addSpacing(14)
-        lay.addWidget(label(CLEANUP["add_title"], "big"))
-        lay.addWidget(label(CLEANUP["add_help"], "muted"))
-        row = QHBoxLayout()
-        site = QLineEdit()
-        site.setPlaceholderText(CLEANUP["add_site"])
-        who = QComboBox()
-        who.setAccessibleName(CLEANUP["add_who"])
+    def refresh(self, _overview=None) -> None:
+        current = self.tabs.currentIndex()
+        positions = [self.tabs.widget(i).verticalScrollBar().value() for i in range(self.tabs.count())]
+        self.tabs.clear()
+        actions = self.win.store.actions()
+        self.who.clear()
         for i in self.win.store.identities("claimed"):
             if i.kind != "keyword":
-                who.addItem(i.value)
-        where = QLineEdit()
-        where.setPlaceholderText(CLEANUP["add_page"])
+                self.who.addItem(i.value)
+        for n, (key, states) in enumerate(GROUPS):
+            rows = [a for a in actions if a["state"] in states]
+            body = QWidget()
+            bl = QVBoxLayout(body)
+            bl.setSpacing(8)
+            if not rows:
+                bl.addWidget(label(CLEANUP["empty"], "muted"))
+            for a in rows:
+                bl.addWidget(ActionCard(self.win.actions, a))
+            bl.addStretch(1)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidget(body)
+            self.tabs.addTab(scroll, CLEANUP[key])
+            if n < len(positions):
+                scroll.verticalScrollBar().setValue(positions[n])
+        self.tabs.setCurrentIndex(max(current, 0))
+
+    def _add_form(self, lay) -> None:
+        box = QFrame()
+        box.setObjectName("card")
+        bl = QVBoxLayout(box)
+        bl.setContentsMargins(14, 10, 14, 10)
+        bl.setSpacing(4)
+        bl.addWidget(label(CLEANUP["add_title"], "title"))
+        bl.addWidget(label(CLEANUP["add_help"], "muted"))
+        row = QHBoxLayout()
+        self.site = QLineEdit()
+        self.site.setPlaceholderText(CLEANUP["add_site"])
+        self.who = QComboBox()
+        self.who.setAccessibleName(CLEANUP["add_who"])
+        self.where = QLineEdit()
+        self.where.setPlaceholderText(CLEANUP["add_page"])
         add = button(CLEANUP["add"], True)
-        for w, stretch in ((site, 2), (who, 2), (where, 3)):
+        for w, stretch in ((self.site, 2), (self.who, 2), (self.where, 3)):
             row.addWidget(w, stretch)
         row.addWidget(add)
-        lay.addLayout(row)
+        bl.addLayout(row)
+        lay.addWidget(box)
+        add.clicked.connect(self._add)
+        self.site.returnPressed.connect(self._add)
 
-        def go():
-            name, contact = site.text().strip(), where.text().strip()
-            if not name or not who.currentText():
-                return
-            email = contact if "@" in contact and "/" not in contact else ""
-            url = "" if email or not contact else (contact if "://" in contact else "https://" + contact)
-            service.add_site(self.win.settings, self.win.store, name, who.currentText(), url, email,
-                             why="added in the desktop app")
-            self.win.changed()
-            self.win.toast.show_message(CLEANUP["added"].format(target=name))
-        add.clicked.connect(go)
+    def _add(self) -> None:
+        name, contact = self.site.text().strip(), self.where.text().strip()
+        if not name or not self.who.currentText():
+            return
+        email = contact if "@" in contact and "/" not in contact else ""
+        url = "" if email or not contact else (contact if "://" in contact else "https://" + contact)
+        service.add_site(self.win.settings, self.win.store, name, self.who.currentText(), url, email,
+                         why="added in the desktop app")
+        self.site.clear()
+        self.where.clear()
+        self.win.changed()
+        self.win.toast.show_message(CLEANUP["added"].format(target=name))

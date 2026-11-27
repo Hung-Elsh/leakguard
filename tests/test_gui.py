@@ -46,9 +46,11 @@ def test_window_builds_on_practice_data(qtbot, temp_data):
     w = main_window.MainWindow("lab")
     qtbot.addWidget(w)
     assert w.windowTitle().endswith("(practice mode)")
-    assert w.target.itemText(0) == wording.CHECK["target_all"]
-    w.kind.setCurrentIndex(w.kind.findData("full"))
-    assert w.command.text() == "leakguard monitor -p lab"            # the same check from the command line
+    assert not hasattr(w, "start_btn") and not hasattr(w, "kind")    # no check bar: Overview, menu, quick access
+    assert w.quick.target.itemText(0) == wording.CHECK["target_all"]
+    assert main_window.command_for("full", None, "lab", w.settings) == "leakguard monitor -p lab"
+    assert main_window.command_for("full", "zorblat_x", "lab", w.settings) == \
+        "leakguard scan --identity zorblat_x -p lab"                   # one address, from quick access
 
 
 def test_check_summary_words():
@@ -119,3 +121,31 @@ def test_reports_page_builds_every_tab(qtbot, temp_data):
     page.refresh()
     assert page.tabs.count() == 6
     assert [page.tabs.tabText(i) for i in range(6)][-1] == wording.REPORTS["tab_final"]
+
+
+def test_menus_sidebar_and_undo(qtbot, temp_data):
+    from leakguard.models import Finding
+    w = _lab_window(qtbot)
+    assert [a.text().replace("&", "") for a in w.menuBar().actions()] == \
+        ["File", "Edit", "View", "Settings", "Add-ons", "Help"]
+    side = w.nav_buttons["reports"].parentWidget().layout()
+    assert side.itemAt(side.count() - 1).widget() is w.nav_buttons["reports"]   # Reports pinned at the bottom
+    assert w.pages["found"].show.currentData() == "show_all"                    # Found items: all by default
+    st = w.store
+    st.seed("zorblat11@seclab.test", "email", "test")
+    st.save_findings(st.start_scan("scan"), st.identities("claimed")[-1], "intelx",
+                     [Finding("intelx", "leak", "IntelX: a.txt", severity="high", locator="i1")])
+    page = w.pages["todo"]
+    page._answer(service.review_groups(service.todo(w.settings, st).review), "false_positive")
+    assert not service.todo(w.settings, st).review
+    w._undo()                                                                    # Edit > Undo
+    assert service.todo(w.settings, st).review
+    assert not w.toast.undo_last()                                               # only once
+
+
+def test_overview_check_button_starts_a_check(qtbot, temp_data, monkeypatch):
+    w = _lab_window(qtbot)
+    started = []
+    monkeypatch.setattr(w, "start_check", lambda kind=None, first_run=False: started.append(kind))
+    w.pages["overview"].check_full.click()
+    assert started == ["full"]

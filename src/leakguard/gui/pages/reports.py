@@ -5,13 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCharts import (QBarCategoryAxis, QBarSet, QBarSeries, QChart, QChartView, QDateTimeAxis,
-                              QHorizontalStackedBarSeries, QLineSeries, QValueAxis)
+from PySide6.QtCharts import (QBarCategoryAxis, QBarSet, QBarSeries, QChart, QChartView, QDateTimeAxis, QLineSeries,
+                              QPieSeries, QValueAxis)
 from PySide6.QtCore import QDateTime, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-                               QHeaderView, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QDialog, QDialogButtonBox, QFileDialog,
+                               QHBoxLayout, QHeaderView, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
+                               QTextBrowser, QVBoxLayout, QWidget)
 
 from ... import service, wording
 from ...wording import REPORTS as R
@@ -39,9 +39,9 @@ def _table(headers: list[str], rows: list[list[str]], stretch: int = 1) -> QTabl
     return t
 
 
-def _chart_view(chart: QChart, height: int = 300) -> QChartView:
+def _chart_view(chart: QChart, height: int = 300, legend=Qt.AlignmentFlag.AlignBottom) -> QChartView:
     chart.setBackgroundVisible(False)
-    chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+    chart.legend().setAlignment(legend)
     v = QChartView(chart)
     v.setRenderHint(QPainter.RenderHint.Antialiasing)
     v.setMinimumHeight(height)
@@ -69,6 +69,7 @@ class ReportsPage(QWidget):
         self.tabs = QTabWidget()
         lay.addWidget(self.tabs, 1)
         self.share = False
+        self.slice_by = "by_kind"
 
     def refresh(self, _overview=None) -> None:
         current = self.tabs.currentIndex()
@@ -86,34 +87,57 @@ class ReportsPage(QWidget):
     def _found(self, lay, st) -> None:
         lay.addWidget(label(R["found_help"], "muted"))
         s = service.found_summary(st)
-        kinds = sorted(s["by_kind"], key=lambda k: -sum(s["by_kind"][k].values()))
-        if kinds:
-            chart = QChart()
-            series = QHorizontalStackedBarSeries()
-            for key, name in SEV_ORDER:
-                bar = QBarSet(name)
-                bar.setColor(QColor(SEV_COLOR[key]))
-                for k in kinds:
-                    bar.append(s["by_kind"][k].get(key, 0))
-                series.append(bar)
-            chart.addSeries(series)
-            y = QBarCategoryAxis()
-            y.append([wording.CATEGORY.get(k, k) for k in kinds])
-            x = QValueAxis()
-            x.setLabelFormat("%d")
-            chart.addAxis(y, Qt.AlignmentFlag.AlignLeft)
-            chart.addAxis(x, Qt.AlignmentFlag.AlignBottom)
-            series.attachAxis(y)
-            series.attachAxis(x)
-            x.applyNiceNumbers()
-            _style_axes(self, chart)
-            lay.addWidget(_chart_view(chart, 60 + 40 * len(kinds)))
+        if s["by_kind"]:
+            switch = QHBoxLayout()
+            group = QButtonGroup(self)
+            for key in ("by_kind", "by_seriousness", "by_status"):     # one chart, three ways to slice it
+                b = QPushButton(R[key])
+                b.setCheckable(True)
+                b.setChecked(key == self.slice_by)
+                group.addButton(b)
+                b.clicked.connect(lambda _=False, k=key: self._set_slice(k))
+                switch.addWidget(b)
+            switch.addStretch(1)
+            lay.addLayout(switch)
+            lay.addWidget(_chart_view(self._pie(s), 360, Qt.AlignmentFlag.AlignRight), 1)   # names in full
         answers = ", ".join(f"{wording.VERDICT_LABEL.get(k, k)} {n}" for k, n in s["answers"].most_common())
         if answers:
             lay.addWidget(label(R["answers"].format(text=answers)))
         if s["unanswered"]:
             lay.addWidget(label(R["unanswered"].format(count=s["unanswered"]), "muted"))
-        lay.addStretch(1)
+        if not s["by_kind"]:
+            lay.addStretch(1)
+
+    def _pie(self, s) -> QChart:
+        from collections import Counter
+        totals: Counter = Counter()
+        colors = {}
+        for kind, c in s["by_kind"].items():
+            for sev, n in c.items():
+                if self.slice_by == "by_kind":
+                    key = wording.CATEGORY.get(kind, kind)
+                elif self.slice_by == "by_seriousness":
+                    key = dict(SEV_ORDER)[sev]
+                    colors[key] = SEV_COLOR[sev]
+                else:
+                    key = R["gone"] if sev == "gone" else R["still_there"]
+                    colors[key] = theme.GOOD if sev == "gone" else theme.WARN
+                totals[key] += n
+        series = QPieSeries()
+        series.setHoleSize(0.42)                        # a ring reads easier than a full pie
+        palette = [theme.ACCENT, theme.WARN, theme.BAD, theme.GOOD, "#8e6bd6", "#2bb3b1", "#c96bb0", "#8a8f98"]
+        for n, (key, count) in enumerate(totals.most_common()):
+            part = series.append(R["slice"].format(name=key, count=count), count)
+            part.setColor(QColor(colors.get(key, palette[n % len(palette)])))
+            part.setBorderColor(self.palette().color(self.palette().ColorRole.Base))
+        chart = QChart()
+        chart.addSeries(series)
+        chart.legend().setLabelColor(self.palette().color(self.foregroundRole()))
+        return chart
+
+    def _set_slice(self, key: str) -> None:
+        self.slice_by = key
+        self.refresh()
 
     # ---- clean-up timeline ----------------------------------------------------------------------
     def _cleanup(self, lay, st) -> None:
@@ -238,6 +262,11 @@ class ReportsPage(QWidget):
         share.toggled.connect(lambda _: show())
         save.clicked.connect(self._save)
         show()
+
+    def save_report(self) -> None:
+        """File > Save the final report: show the Final report tab and ask where to save it."""
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        self._save()
 
     def _save(self) -> None:
         name = f"leakguard-report{'-shared' if self.share else ''}.md"
