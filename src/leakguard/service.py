@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import config, engine, identities, keystore, monitor
 from .paths import CONFIG
-from .plugins import ALL_PLUGINS
+from .plugins import active
 from .plugins.tools import ToolPlugin
 from .runner import ToolError, find_binary
 from .store import Store
@@ -99,7 +99,7 @@ def run_check(settings: config.Settings, store: Store, kind: str, progress: engi
     if kind not in ("quick", "full"):
         raise ValueError("kind must be quick or full")
     if identity:
-        quick = [p.name for p in ALL_PLUGINS if p.name not in monitor.SLOW_TOOLS] if kind == "quick" else None
+        quick = [p.name for p in active(settings) if p.name not in monitor.SLOW_TOOLS] if kind == "quick" else None
         r = engine.rescan(settings, store, quick, {identity}, progress=progress, cancel=cancel)
         return CheckResult(new=r.new_findings, gone=r.gone_findings, candidates=r.new_candidates,
                            problems=[f"{src} / {i}: {st}" for src, i, st in r.runs if st.startswith("error")],
@@ -201,11 +201,18 @@ class SourceStatus:
         return self.allowed and not self.missing_keys
 
 
+def _allowed(settings: config.Settings, p) -> bool:
+    from . import custom_tools
+    if hasattr(p, "origin"):                          # a tool defined in JSON: switched on (or the lab example)
+        return settings.is_lab or custom_tools.is_enabled(p.name)
+    return bool(settings.source(p.name).get("allowed", False))
+
+
 def source_status(settings: config.Settings) -> list[SourceStatus]:
-    return [SourceStatus(p.name, p.kinds, bool(settings.source(p.name).get("allowed", False)),
+    return [SourceStatus(p.name, p.kinds, _allowed(settings, p),
                          [k for k in p.needs if not settings.key(k)],
                          settings.tools_mode == "fixtures" and isinstance(p, ToolPlugin))
-            for p in ALL_PLUGINS]
+            for p in active(settings)]
 
 
 # ---- keys (the values go to keystore; the database only records that a connection exists) ------------
@@ -755,3 +762,91 @@ def set_weekly(profile: str, on: bool) -> tuple[bool, str]:
         if p.returncode != 0:
             return False, "\n".join(out)
     return True, "\n".join(out)
+
+
+# ---- your own tools (custom_tools.py) ---------------------------------------------------------------------
+@dataclass
+class ToolTrial:
+    ok: bool
+    value: str = ""
+    found: list = field(default_factory=list)     # titles of what it would report
+    problem: str = ""                             # invalid | practice | not_installed | failed | ''
+    detail: str = ""                              # the problems, or the tool's raw output
+
+
+def builtin_ids() -> set[str]:
+    return {s["id"] for s in json.loads((CONFIG / "sources.json").read_text())["sources"]}
+
+
+def try_tool(settings: config.Settings, m: dict, value: str | None = None) -> ToolTrial:
+    """Run a tool definition once on the owner's own email or username and show what it would find.
+    Lab: the recorded output only. Nothing is saved to the database."""
+    import tempfile
+
+    from . import custom_tools
+    from .models import redact
+    from .net import Http
+    from .plugins import Context
+    from .plugins.manifest import ManifestTool
+    from .runner import ToolError, fixture_path, run
+    from .scope import ScopeGuard
+    found = custom_tools.problems(m, builtin_ids())
+    if found:
+        return ToolTrial(False, problem="invalid", detail="\n".join(found))
+    tool = ManifestTool(m)
+    if not value:
+        mine = [s["value"] for s in settings.seeds if s["kind"] in tool.kinds]
+        value = mine[0] if mine else ""
+    if settings.is_lab:
+        p = fixture_path(settings, tool.name, value, tool.ext)
+        if not p.exists():
+            return ToolTrial(False, value, problem="practice")
+        text = p.read_text()
+    else:
+        try:
+            cmd = tool.command(value)
+        except ToolError as e:
+            return ToolTrial(False, value, problem="not_installed", detail=str(e))
+        try:
+            with tempfile.TemporaryDirectory(prefix=f"lg-try-{tool.name}-") as tmp:
+                proc = run(cmd, Path(tmp), tool.timeout)
+        except ToolError as e:
+            return ToolTrial(False, value, problem="failed", detail=str(e))
+        text = proc.stdout
+        if proc.returncode != 0 and not text.strip():
+            return ToolTrial(False, value, problem="failed",
+                             detail=redact(f"exit code {proc.returncode}\n{proc.stderr[-3000:]}",
+                                           settings.secret_values()))
+    guard = ScopeGuard(settings)
+    ctx = Context(settings, guard, Http(settings, guard), {value})
+    try:
+        res = tool.parse(ctx, text, value, "email" if "@" in value else "username")
+    except (ValueError, KeyError, TypeError) as e:     # e.g. the output isn't the JSON the definition says
+        return ToolTrial(False, value, problem="failed", detail=f"{type(e).__name__}: {e}\n\n{text[:3000]}")
+    return ToolTrial(True, value, [f.title for f in res.findings], detail=text[:3000])
+
+
+def save_tool(m: dict) -> Path:
+    """Save one of the owner's tools (switched on) and add it to the checks."""
+    from . import custom_tools, plugins
+    taken = builtin_ids()
+    found = custom_tools.problems(m, taken)
+    if found:
+        raise ValueError("\n".join(found))
+    m = {**m, "enabled": m.get("enabled", True)}
+    path = custom_tools.save(m)
+    plugins.reload_custom()
+    return path
+
+
+def switch_tool(tid: str, on: bool) -> None:
+    from . import custom_tools, plugins
+    custom_tools.set_enabled(tid, on)
+    plugins.reload_custom()
+
+
+def remove_tool(tid: str) -> bool:
+    from . import custom_tools, plugins
+    done = custom_tools.remove(tid)
+    plugins.reload_custom()
+    return done
